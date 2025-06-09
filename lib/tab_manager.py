@@ -33,11 +33,11 @@ class ChatTab:
     
     def _create_ui(self):
         """Create the tab's UI components"""
-        # Chat display area
-        chat_frame = ttk.Frame(self.frame, style="Custom.TFrame")
-        chat_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # Chat display area with modern styling
+        chat_frame = ttk.Frame(self.frame, style="Surface.TFrame")
+        chat_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 5))
         
-        # Create text widget with scrollbar
+        # Create text widget with scrollbar and modern styling
         self.chat_display = tk.Text(
             chat_frame,
             wrap=tk.WORD,
@@ -47,40 +47,59 @@ class ChatTab:
             font=("SF Pro Display", 11),
             insertbackground="#48b9c7",
             selectbackground="#48b9c7",
-            selectforeground="#ffffff"
+            selectforeground="#ffffff",
+            padx=15,
+            pady=15,
+            relief="flat",
+            borderwidth=0
         )
         
-        scrollbar = ttk.Scrollbar(chat_frame, orient=tk.VERTICAL, command=self.chat_display.yview)
+        scrollbar = ttk.Scrollbar(chat_frame, orient=tk.VERTICAL, command=self.chat_display.yview, style="Custom.Vertical.TScrollbar")
         self.chat_display.configure(yscrollcommand=scrollbar.set)
         
         # Pack chat display and scrollbar
-        self.chat_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.chat_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 2))
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Input area
-        input_frame = ttk.Frame(self.frame, style="Custom.TFrame")
-        input_frame.pack(fill=tk.X, padx=5, pady=5)
+        # Input area with modern styling
+        input_frame = ttk.Frame(self.frame, style="Surface.TFrame")
+        input_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
         
-        # Input text widget
+        # Input text widget with rounded appearance
+        input_container = ttk.Frame(input_frame, style="Custom.TFrame")
+        input_container.pack(fill=tk.BOTH, expand=True, padx=(10, 5), pady=10)
+        
         self.input_text = tk.Text(
-            input_frame,
+            input_container,
             height=3,
             wrap=tk.WORD,
             bg="#3c3c3c",
             fg="#ffffff",
             font=("SF Pro Display", 11),
-            insertbackground="#48b9c7"
+            insertbackground="#48b9c7",
+            selectbackground="#48b9c7",
+            selectforeground="#ffffff",
+            padx=12,
+            pady=8,
+            relief="flat",
+            borderwidth=1,
+            highlightthickness=2,
+            highlightcolor="#48b9c7",
+            highlightbackground="#4a4a4a"
         )
-        self.input_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        self.input_text.pack(fill=tk.BOTH, expand=True)
         
-        # Send button
+        # Send button with modern styling
+        button_container = ttk.Frame(input_frame, style="Custom.TFrame")
+        button_container.pack(side=tk.RIGHT, padx=10, pady=10)
+        
         self.send_button = ttk.Button(
-            input_frame,
+            button_container,
             text="Send",
             style="Custom.TButton",
             command=self._on_send
         )
-        self.send_button.pack(side=tk.RIGHT)
+        self.send_button.pack()
         
         # Bind Enter key to send (Ctrl+Enter for new line)
         self.input_text.bind("<Return>", self._on_enter_key)
@@ -96,12 +115,15 @@ class ChatTab:
             "italic": {"font": ("SF Pro Display", 11, "italic")},
             "code": {
                 "font": ("SF Mono", 10),
-                "background": "#363636",
-                "foreground": "#48b9c7"
+                "background": "#3c3c3c",
+                "foreground": "#f8f8f2",
+                "relief": "solid",
+                "borderwidth": 1
             },
             "code_block": {
                 "font": ("SF Mono", 10),
-                "background": "#363636",
+                "background": "#3c3c3c",
+                "foreground": "#f8f8f2",
                 "spacing1": 10,
                 "spacing3": 10,
                 "lmargin1": 10,
@@ -114,8 +136,14 @@ class ChatTab:
             "blockquote": {
                 "lmargin1": 20,
                 "lmargin2": 20,
-                "background": "#363636",
-                "font": ("SF Pro Display", 11, "italic")
+                "background": "#3c3c3c",
+                "font": ("SF Pro Display", 11, "italic"),
+                "relief": "solid",
+                "borderwidth": 1
+            },
+            "bullet": {
+                "foreground": "#48b9c7",
+                "font": ("SF Pro Display", 11, "bold")
             },
             "hr": {
                 "foreground": "#48b9c7",
@@ -125,18 +153,29 @@ class ChatTab:
             },
             "header1": {
                 "font": ("SF Pro Display", 16, "bold"),
+                "foreground": "#48b9c7",
                 "spacing1": 10,
                 "spacing3": 5
             },
             "header2": {
                 "font": ("SF Pro Display", 14, "bold"),
+                "foreground": "#48b9c7",
                 "spacing1": 8,
                 "spacing3": 4
             },
             "header3": {
                 "font": ("SF Pro Display", 12, "bold"),
+                "foreground": "#48b9c7",
                 "spacing1": 6,
                 "spacing3": 3
+            },
+            "timestamp": {
+                "foreground": "#b0b0b0",
+                "font": ("SF Pro Display", 9)
+            },
+            "sender": {
+                "font": ("SF Pro Display", 11, "bold"),
+                "foreground": "#48b9c7"
             }
         }
         
@@ -182,21 +221,13 @@ class ChatTab:
         self.input_text.delete("1.0", tk.END)
     
     def add_message(self, sender: str, content: str, role: str = "user"):
-        """Add a message to the chat display"""
+        """Add a message to the chat display with modern bubble styling"""
         try:
             # Enable editing
             self.chat_display.configure(state=tk.NORMAL)
             
-            # Add timestamp and sender
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%H:%M")
-            
-            self.chat_display.insert(tk.END, f"[{timestamp}] ", "timestamp")
-            self.chat_display.insert(tk.END, f"{sender}: ", "bold")
-            
-            # Add content - simplified for now
-            self.chat_display.insert(tk.END, content)
-            self.chat_display.insert(tk.END, "\n\n")
+            # Create message bubble
+            self._create_message_bubble(sender, content, role)
             
             # Add to conversation
             if role == "user":
@@ -210,6 +241,72 @@ class ChatTab:
             
         except Exception as e:
             log_exception(e, "Failed to add message to chat")
+    
+    def _create_message_bubble(self, sender: str, content: str, role: str):
+        """Create a modern message bubble for this tab"""
+        from datetime import datetime
+        
+        # Create message container frame
+        message_frame = tk.Frame(self.chat_display, bg="#2d2d2d", relief="flat", bd=0)
+        
+        # Different styling for user vs assistant
+        if role == "assistant":
+            bubble_bg = "#3c3c3c"
+            sender_color = "#48b9c7"
+        else:
+            bubble_bg = "#404040"
+            sender_color = "#ffffff"
+        
+        # Create the actual message bubble
+        bubble_frame = tk.Frame(message_frame, bg=bubble_bg, relief="flat", bd=1, highlightbackground="#4a4a4a", highlightthickness=1)
+        bubble_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Header with sender and timestamp
+        header_frame = tk.Frame(bubble_frame, bg=bubble_bg)
+        header_frame.pack(fill=tk.X, padx=12, pady=(8, 4))
+        
+        timestamp = datetime.now().strftime("%H:%M")
+        sender_label = tk.Label(
+            header_frame,
+            text=f"{sender}",
+            bg=bubble_bg,
+            fg=sender_color,
+            font=("SF Pro Display", 11, "bold"),
+            anchor="w"
+        )
+        sender_label.pack(side=tk.LEFT)
+        
+        time_label = tk.Label(
+            header_frame,
+            text=timestamp,
+            bg=bubble_bg,
+            fg="#b0b0b0",
+            font=("SF Pro Display", 9),
+            anchor="e"
+        )
+        time_label.pack(side=tk.RIGHT)
+        
+        # Content area
+        content_frame = tk.Frame(bubble_frame, bg=bubble_bg)
+        content_frame.pack(fill=tk.X, padx=12, pady=(0, 12))
+        
+        # Simple content label for now (can be enhanced for markdown later)
+        content_label = tk.Label(
+            content_frame,
+            text=content,
+            bg=bubble_bg,
+            fg="#ffffff",
+            font=("SF Pro Display", 11),
+            anchor="w",
+            justify=tk.LEFT,
+            wraplength=500
+        )
+        content_label.pack(fill=tk.X)
+        
+        # Insert the message bubble into the main text widget
+        self.chat_display.insert(tk.END, "\n")
+        self.chat_display.window_create(tk.END, window=message_frame)
+        self.chat_display.insert(tk.END, "\n")
     
     def clear_chat(self):
         """Clear the chat display"""

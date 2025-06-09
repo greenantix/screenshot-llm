@@ -219,24 +219,32 @@ class PersistentChatWindow(tk.Tk):
     def _copy_to_clipboard(self, text: str):
         """Copy text to system clipboard"""
         try:
-            # Use wl-copy for Wayland or xclip for X11
-            if os.environ.get('WAYLAND_DISPLAY'):
-                subprocess.run(['wl-copy'], input=text.encode(), timeout=5, check=True)
-            else:
-                subprocess.run(['xclip', '-selection', 'clipboard'], input=text.encode(), timeout=5, check=True)
+            # First try tkinter's built-in clipboard
+            self.clipboard_clear()
+            self.clipboard_append(text)
+            self.update()  # Ensure clipboard is updated
             
-            self.status_bar.configure(text="Code copied to clipboard")
+            self.status_bar.configure(text="Code copied to clipboard ✓")
             logger.info("Code copied to clipboard")
             
             # Reset status after 2 seconds
             self.after(2000, lambda: self.status_bar.configure(text="Ready"))
             
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Failed to copy to clipboard: {e}")
-            self.status_bar.configure(text="Failed to copy - clipboard tool not available")
         except Exception as e:
-            logger.error(f"Error copying to clipboard: {e}")
-            self.status_bar.configure(text="Error copying to clipboard")
+            # Fallback to external tools
+            try:
+                if os.environ.get('WAYLAND_DISPLAY'):
+                    subprocess.run(['wl-copy'], input=text.encode(), timeout=5, check=True)
+                else:
+                    subprocess.run(['xclip', '-selection', 'clipboard'], input=text.encode(), timeout=5, check=True)
+                
+                self.status_bar.configure(text="Code copied to clipboard ✓")
+                logger.info("Code copied to clipboard via external tool")
+                self.after(2000, lambda: self.status_bar.configure(text="Ready"))
+                
+            except Exception as fallback_error:
+                logger.error(f"Error copying to clipboard: {e}, fallback: {fallback_error}")
+                self.status_bar.configure(text="Error copying to clipboard")
     
     def _create_ui(self):
         """Create the user interface"""
@@ -351,8 +359,13 @@ class PersistentChatWindow(tk.Tk):
             # Create thumbnail asynchronously
             def on_thumbnail_ready(thumbnail_data: bytes):
                 try:
-                    # Create thumbnail image for display
+                    # Create thumbnail image for display with better sizing
                     image = Image.open(io.BytesIO(thumbnail_data))
+                    
+                    # Resize thumbnail to a more reasonable size
+                    max_width, max_height = 300, 200
+                    image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+                    
                     photo = ImageTk.PhotoImage(image)
                     
                     # Store reference to prevent garbage collection
@@ -368,7 +381,7 @@ class PersistentChatWindow(tk.Tk):
                     if context.get('window_title'):
                         context_str += f" - {context['window_title']}"
                     
-                    current_tab.chat_display.insert(tk.END, f"\n📷 {context_str}\n", "bold")
+                    current_tab.chat_display.insert(tk.END, f"\n📷 {context_str}\n", "sender")
                     current_tab.chat_display.image_create(tk.END, image=photo)
                     
                     # Make image clickable
@@ -466,21 +479,13 @@ class PersistentChatWindow(tk.Tk):
         return "\n".join(parts)
     
     def _display_llm_response(self, tab, response: str):
-        """Display LLM response in the chat"""
+        """Display LLM response in the chat with modern styling"""
         try:
             tab.chat_display.configure(state=tk.NORMAL)
             
-            # Add timestamp and label
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%H:%M")
+            # Create a modern message container
+            self._create_message_bubble(tab.chat_display, "Assistant", response, "assistant")
             
-            tab.chat_display.insert(tk.END, f"[{timestamp}] ", "timestamp")
-            tab.chat_display.insert(tk.END, "Assistant: ", "bold")
-            
-            # Parse and display markdown response with copy buttons
-            self._parse_markdown(response, tab.chat_display)
-            
-            tab.chat_display.insert(tk.END, "\n\n")
             tab.chat_display.configure(state=tk.DISABLED)
             tab.chat_display.see(tk.END)
             
@@ -493,18 +498,100 @@ class PersistentChatWindow(tk.Tk):
         except Exception as e:
             log_exception(e, "Failed to display LLM response")
     
+    def _create_message_bubble(self, text_widget: tk.Text, sender: str, content: str, role: str):
+        """Create a modern message bubble with proper styling"""
+        from datetime import datetime
+        
+        # Create message container frame
+        message_frame = tk.Frame(text_widget, bg=self.bg_color, relief="flat", bd=0)
+        
+        # Different styling for user vs assistant
+        if role == "assistant":
+            bubble_bg = self.surface_color
+            sender_color = self.accent_color
+        else:
+            bubble_bg = "#404040"
+            sender_color = "#ffffff"
+        
+        # Create the actual message bubble
+        bubble_frame = tk.Frame(message_frame, bg=bubble_bg, relief="flat", bd=1, highlightbackground=self.border_color, highlightthickness=1)
+        bubble_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Header with sender and timestamp
+        header_frame = tk.Frame(bubble_frame, bg=bubble_bg)
+        header_frame.pack(fill=tk.X, padx=12, pady=(8, 4))
+        
+        timestamp = datetime.now().strftime("%H:%M")
+        sender_label = tk.Label(
+            header_frame,
+            text=f"{sender}",
+            bg=bubble_bg,
+            fg=sender_color,
+            font=("SF Pro Display", 11, "bold"),
+            anchor="w"
+        )
+        sender_label.pack(side=tk.LEFT)
+        
+        time_label = tk.Label(
+            header_frame,
+            text=timestamp,
+            bg=bubble_bg,
+            fg=self.text_secondary,
+            font=("SF Pro Display", 9),
+            anchor="e"
+        )
+        time_label.pack(side=tk.RIGHT)
+        
+        # Content area
+        content_frame = tk.Frame(bubble_frame, bg=bubble_bg)
+        content_frame.pack(fill=tk.X, padx=12, pady=(0, 12))
+        
+        # Create text widget for content with markdown
+        content_text = tk.Text(
+            content_frame,
+            bg=bubble_bg,
+            fg=self.fg_color,
+            font=("SF Pro Display", 11),
+            relief="flat",
+            bd=0,
+            wrap=tk.WORD,
+            height=1,  # Will be adjusted based on content
+            state=tk.DISABLED,
+            cursor="arrow"
+        )
+        content_text.pack(fill=tk.X)
+        
+        # Parse and insert markdown content
+        content_text.configure(state=tk.NORMAL)
+        self._parse_markdown(content, content_text)
+        
+        # Adjust height based on content
+        content_text.update_idletasks()
+        lines = int(content_text.index('end-1c').split('.')[0])
+        content_text.configure(height=min(lines, 30))  # Max 30 lines
+        content_text.configure(state=tk.DISABLED)
+        
+        # Insert the message bubble into the main text widget
+        text_widget.insert(tk.END, "\n")
+        text_widget.window_create(tk.END, window=message_frame)
+        text_widget.insert(tk.END, "\n")
+    
     def _parse_markdown(self, text: str, text_widget: tk.Text):
         """Parse and display markdown formatted text with copy code buttons"""
         import re
         
-        # Configure text tags for styling
-        text_widget.tag_configure("header1", font=("SF Pro Display", 14, "bold"), foreground=self.accent_color)
-        text_widget.tag_configure("header2", font=("SF Pro Display", 12, "bold"), foreground=self.accent_color)
-        text_widget.tag_configure("header3", font=("SF Pro Display", 11, "bold"), foreground=self.accent_color)
-        text_widget.tag_configure("code", font=("SF Mono", 10), background=self.surface_color, foreground="#f8f8f2")
+        # Configure text tags for modern styling
+        text_widget.tag_configure("header1", font=("SF Pro Display", 16, "bold"), foreground=self.accent_color, spacing1=10, spacing3=5)
+        text_widget.tag_configure("header2", font=("SF Pro Display", 14, "bold"), foreground=self.accent_color, spacing1=8, spacing3=4)
+        text_widget.tag_configure("header3", font=("SF Pro Display", 12, "bold"), foreground=self.accent_color, spacing1=6, spacing3=3)
+        text_widget.tag_configure("code", font=("SF Mono", 10), background=self.surface_color, foreground="#f8f8f2", relief="solid", borderwidth=1)
         text_widget.tag_configure("code_block", font=("SF Mono", 10), background=self.surface_color, foreground="#f8f8f2")
-        text_widget.tag_configure("bold", font=("SF Pro Display", 10, "bold"))
-        text_widget.tag_configure("italic", font=("SF Pro Display", 10, "italic"))
+        text_widget.tag_configure("bold", font=("SF Pro Display", 11, "bold"))
+        text_widget.tag_configure("italic", font=("SF Pro Display", 11, "italic"))
+        text_widget.tag_configure("bullet", foreground=self.accent_color, font=("SF Pro Display", 11, "bold"))
+        text_widget.tag_configure("blockquote", lmargin1=20, lmargin2=20, background=self.surface_color, font=("SF Pro Display", 11, "italic"), relief="solid", borderwidth=1)
+        text_widget.tag_configure("timestamp", foreground=self.text_secondary, font=("SF Pro Display", 9))
+        text_widget.tag_configure("sender", font=("SF Pro Display", 11, "bold"), foreground=self.accent_color)
         
         # Split text into parts, handling code blocks specially
         parts = re.split(r'(```[\w]*\n.*?\n```)', text, flags=re.DOTALL)
@@ -518,7 +605,7 @@ class PersistentChatWindow(tk.Tk):
                 self._parse_regular_markdown(text_widget, part)
     
     def _insert_code_block(self, text_widget: tk.Text, code_block: str):
-        """Insert a code block with syntax highlighting and copy button"""
+        """Insert a modern code block with syntax highlighting and copy button"""
         lines = code_block.strip().split('\n')
         if len(lines) < 2:
             return
@@ -531,35 +618,74 @@ class PersistentChatWindow(tk.Tk):
         if not code_content.strip():
             return
         
-        # Insert code block header with language and copy button
-        text_widget.insert(tk.END, f"\n{language.title()} Code:\n", "bold")
+        # Get parent background color
+        parent_bg = text_widget.cget('bg')
+        code_bg = "#1e1e1e"  # Darker background for code blocks
         
-        # Apply syntax highlighting
-        code_start = text_widget.index(tk.END)
-        self._insert_highlighted_code(text_widget, code_content, language)
-        code_end = text_widget.index(tk.END)
+        # Create a modern code block container frame with rounded appearance
+        code_container = tk.Frame(text_widget, bg=code_bg, relief="solid", bd=2, highlightbackground="#48b9c7", highlightthickness=1)
         
-        # Create copy button frame
-        button_frame = tk.Frame(text_widget, bg=self.bg_color)
-        copy_button = ttk.Button(
-            button_frame,
+        # Header with language and copy button
+        header_frame = tk.Frame(code_container, bg="#333333", height=35)
+        header_frame.pack(fill=tk.X, padx=0, pady=0)
+        header_frame.pack_propagate(False)
+        
+        # Language label with modern styling
+        lang_label = tk.Label(
+            header_frame,
+            text=language.title() if language != "text" else "Code",
+            bg="#333333",
+            fg="#cccccc",
+            font=("SF Pro Display", 9, "bold"),
+            anchor="w"
+        )
+        lang_label.pack(side=tk.LEFT, padx=12, pady=8)
+        
+        # Modern copy button with hover effects
+        copy_button = tk.Button(
+            header_frame,
             text="📋 Copy",
-            style="Secondary.TButton",
+            bg="#48b9c7",
+            fg="#ffffff",
+            font=("SF Pro Display", 8, "bold"),
+            relief="flat",
+            bd=0,
+            padx=8,
+            pady=4,
+            cursor="hand2",
             command=lambda: self._copy_to_clipboard(code_content)
         )
-        copy_button.pack(pady=2)
+        copy_button.pack(side=tk.RIGHT, padx=12, pady=6)
         
-        # Insert button as window in text widget
+        # Add hover effects
+        def on_enter(e):
+            copy_button.configure(bg="#5cc7d5")
+        def on_leave(e):
+            copy_button.configure(bg="#48b9c7")
+        copy_button.bind("<Enter>", on_enter)
+        copy_button.bind("<Leave>", on_leave)
+        
+        # Code content area
+        code_frame = tk.Frame(code_container, bg=code_bg)
+        code_frame.pack(fill=tk.BOTH, expand=True, padx=12, pady=(0, 12))
+        
+        # Simple text display for code (more reliable than nested Text widgets)
+        code_label = tk.Label(
+            code_frame,
+            text=code_content,
+            bg=code_bg,
+            fg="#f8f8f2",
+            font=("SF Mono", 10),
+            anchor="nw",
+            justify=tk.LEFT,
+            wraplength=600
+        )
+        code_label.pack(fill=tk.BOTH, expand=True, anchor="nw")
+        
+        # Insert the entire container into the main text widget
         text_widget.insert(tk.END, "\n")
-        text_widget.window_create(tk.END, window=button_frame)
+        text_widget.window_create(tk.END, window=code_container)
         text_widget.insert(tk.END, "\n\n")
-        
-        # Add border around code block
-        text_widget.tag_add("code_block_border", code_start, code_end)
-        text_widget.tag_configure("code_block_border", 
-                                 relief="solid", 
-                                 borderwidth=1,
-                                 bgstipple="gray50")
     
     def _insert_highlighted_code(self, text_widget: tk.Text, code: str, language: str):
         """Insert code with syntax highlighting"""
@@ -636,16 +762,27 @@ class PersistentChatWindow(tk.Tk):
             text_widget.insert(tk.END, code, "code_block")
     
     def _parse_regular_markdown(self, text_widget: tk.Text, text: str):
-        """Parse regular markdown text (non-code blocks)"""
+        """Parse regular markdown text with modern styling"""
         lines = text.split("\n")
         
         for line in lines:
             if line.startswith("# "):
-                text_widget.insert(tk.END, line[2:] + "\n", "header1")
+                text_widget.insert(tk.END, "\n")
+                text_widget.insert(tk.END, line[2:] + "\n\n", "header1")
             elif line.startswith("## "):
-                text_widget.insert(tk.END, line[3:] + "\n", "header2")
+                text_widget.insert(tk.END, "\n")
+                text_widget.insert(tk.END, line[3:] + "\n\n", "header2")
             elif line.startswith("### "):
-                text_widget.insert(tk.END, line[4:] + "\n", "header3")
+                text_widget.insert(tk.END, "\n")
+                text_widget.insert(tk.END, line[4:] + "\n\n", "header3")
+            elif line.startswith("- ") or line.startswith("* "):
+                # Handle bullet points with better styling
+                text_widget.insert(tk.END, "  • ", "bullet")
+                self._parse_text_formatting(text_widget, line[2:])
+                text_widget.insert(tk.END, "\n")
+            elif line.startswith("> "):
+                # Handle blockquotes
+                text_widget.insert(tk.END, line[2:] + "\n", "blockquote")
             elif "`" in line:
                 # Handle inline code
                 self._parse_inline_code(text_widget, line)
