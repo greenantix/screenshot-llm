@@ -1,237 +1,271 @@
 #!/usr/bin/env python3
-import subprocess
+"""
+Context detection for Screenshot LLM Assistant
+"""
+
 import os
-import json
+import subprocess
 import logging
+import json
 from typing import Dict, Optional
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 class ContextDetector:
-    def __init__(self, contexts_file: str = "~/.local/share/screenshot-llm/config/contexts.json"):
-        self.contexts_file = os.path.expanduser(contexts_file)
-        self.contexts = self._load_contexts()
-        self.is_wayland = os.environ.get('WAYLAND_DISPLAY') is not None
+    """Detects application context and working directory information"""
     
-    def _load_contexts(self) -> dict:
-        """Load context configurations"""
+    def __init__(self):
+        self.contexts_config = self._load_contexts_config()
+        
+    def _load_contexts_config(self) -> Dict:
+        """Load context detection rules from config"""
         try:
-            with open(self.contexts_file, 'r') as f:
-                return json.load(f)
+            config_path = "config/contexts.json"
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    return json.load(f)
         except Exception as e:
-            logger.error(f"Could not load contexts: {e}")
-            return {"default": {
-                "apps": ["*"],
-                "get_context": "active window title",
-                "prompt_template": "Help me with:"
-            }}
+            logger.error(f"Failed to load contexts config: {e}")
+        
+        # Return default contexts
+        return {
+            "applications": {
+                "code": ["code", "codium", "atom", "sublime_text", "vim", "nvim", "emacs"],
+                "terminal": ["gnome-terminal", "konsole", "xterm", "alacritty", "kitty", "terminator"],
+                "browser": ["firefox", "chrome", "chromium", "brave", "opera", "safari"],
+                "ide": ["intellij", "pycharm", "webstorm", "eclipse", "netbeans"]
+            },
+            "file_extensions": {
+                "python": [".py", ".pyw", ".ipynb"],
+                "javascript": [".js", ".jsx", ".ts", ".tsx"],
+                "web": [".html", ".htm", ".css", ".scss", ".sass"],
+                "config": [".json", ".yaml", ".yml", ".toml", ".ini", ".conf"],
+                "shell": [".sh", ".bash", ".zsh", ".fish"]
+            }
+        }
     
     def get_active_window_info(self) -> Dict[str, str]:
-        """Get active window information"""
+        """Get information about the active window"""
         window_info = {
-            'app_name': '',
-            'window_title': '',
-            'pid': '',
-            'working_dir': ''
+            "app_name": "unknown",
+            "window_title": "",
+            "working_directory": "",
+            "process_id": "",
+            "window_class": ""
         }
         
         try:
-            if self.is_wayland:
+            if self._is_wayland():
                 window_info.update(self._get_wayland_window_info())
             else:
                 window_info.update(self._get_x11_window_info())
         except Exception as e:
-            logger.warning(f"Could not get window info: {e}")
+            logger.error(f"Failed to get window info: {e}")
+        
+        # Get working directory if we have a process ID
+        if window_info.get("process_id"):
+            try:
+                cwd = self._get_process_working_directory(window_info["process_id"])
+                if cwd:
+                    window_info["working_directory"] = cwd
+            except Exception as e:
+                logger.debug(f"Failed to get working directory: {e}")
         
         return window_info
     
-    def _get_wayland_window_info(self) -> Dict[str, str]:
-        """Get window info on Wayland (GNOME Shell)"""
-        info = {}
-        
-        try:
-            # Get active window via GNOME Shell
-            result = subprocess.run([
-                'gdbus', 'call', '--session',
-                '--dest', 'org.gnome.Shell',
-                '--object-path', '/org/gnome/Shell',
-                '--method', 'org.gnome.Shell.Eval',
-                'global.display.get_focus_window().get_wm_class()'
-            ], capture_output=True, text=True, timeout=3)
-            
-            if result.returncode == 0:
-                # Parse the result to get app name
-                output = result.stdout.strip()
-                if '"' in output:
-                    app_name = output.split('"')[1]
-                    info['app_name'] = app_name.lower()
-            
-            # Get window title
-            result = subprocess.run([
-                'gdbus', 'call', '--session',
-                '--dest', 'org.gnome.Shell',
-                '--object-path', '/org/gnome/Shell',
-                '--method', 'org.gnome.Shell.Eval',
-                'global.display.get_focus_window().get_title()'
-            ], capture_output=True, text=True, timeout=3)
-            
-            if result.returncode == 0:
-                output = result.stdout.strip()
-                if '"' in output:
-                    title = output.split('"')[1]
-                    info['window_title'] = title
-                    
-        except Exception as e:
-            logger.debug(f"GNOME Shell method failed: {e}")
-            
-        # Fallback: try to get info from ps
-        if not info.get('app_name'):
-            try:
-                # Get focused window PID (this is tricky on Wayland)
-                result = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
-                # This is a simplified approach - might need refinement
-                for line in result.stdout.split('\n'):
-                    if any(term in line.lower() for term in ['gnome-terminal', 'code', 'firefox']):
-                        parts = line.split()
-                        if len(parts) > 10:
-                            info['app_name'] = parts[10].split('/')[-1]
-                            info['pid'] = parts[1]
-                            break
-            except Exception as e:
-                logger.debug(f"ps fallback failed: {e}")
-        
-        return info
+    def _is_wayland(self) -> bool:
+        """Check if running under Wayland"""
+        return 'WAYLAND_DISPLAY' in os.environ
     
     def _get_x11_window_info(self) -> Dict[str, str]:
-        """Get window info on X11"""
+        """Get window information on X11"""
         info = {}
         
         try:
             # Get active window ID
             result = subprocess.run(['xdotool', 'getactivewindow'], 
-                                  capture_output=True, text=True, timeout=3)
-            if result.returncode != 0:
-                return info
-                
+                                  capture_output=True, text=True, check=True)
             window_id = result.stdout.strip()
             
-            # Get window class (app name)
+            # Get window title
             result = subprocess.run(['xdotool', 'getwindowname', window_id],
-                                  capture_output=True, text=True, timeout=3)
+                                  capture_output=True, text=True)
             if result.returncode == 0:
-                info['window_title'] = result.stdout.strip()
+                info["window_title"] = result.stdout.strip()
             
             # Get window class
             result = subprocess.run(['xprop', '-id', window_id, 'WM_CLASS'],
-                                  capture_output=True, text=True, timeout=3)
+                                  capture_output=True, text=True)
             if result.returncode == 0:
-                output = result.stdout
-                if '"' in output:
-                    # WM_CLASS returns something like: WM_CLASS(STRING) = "gnome-terminal-server", "Gnome-terminal"
-                    class_name = output.split('"')[1]
-                    info['app_name'] = class_name.lower()
+                # Parse WM_CLASS output: WM_CLASS(STRING) = "instance", "class"
+                wm_class = result.stdout.strip()
+                if '=' in wm_class:
+                    class_part = wm_class.split('=')[1].strip()
+                    # Extract class name (second quoted string)
+                    parts = class_part.split(',')
+                    if len(parts) >= 2:
+                        app_class = parts[1].strip().strip('"')
+                        info["window_class"] = app_class
+                        info["app_name"] = app_class.lower()
             
-            # Get PID
+            # Get process ID
             result = subprocess.run(['xdotool', 'getwindowpid', window_id],
-                                  capture_output=True, text=True, timeout=3)
+                                  capture_output=True, text=True)
             if result.returncode == 0:
-                info['pid'] = result.stdout.strip()
+                info["process_id"] = result.stdout.strip()
                 
+        except subprocess.CalledProcessError as e:
+            logger.debug(f"xdotool command failed: {e}")
         except Exception as e:
-            logger.debug(f"X11 window detection failed: {e}")
+            logger.error(f"Failed to get X11 window info: {e}")
         
         return info
     
-    def get_working_directory(self, pid: str) -> str:
-        """Get working directory from PID"""
-        if not pid:
-            return os.getcwd()
-            
+    def _get_wayland_window_info(self) -> Dict[str, str]:
+        """Get window information on Wayland (limited)"""
+        info = {}
+        
+        # Wayland doesn't provide easy access to active window info
+        # We can try some heuristics or use compositor-specific tools
+        
+        try:
+            # Try to get info from process list
+            result = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
+            if result.returncode == 0:
+                # Look for common GUI applications
+                lines = result.stdout.split('\n')
+                for line in lines:
+                    for app_category, apps in self.contexts_config.get("applications", {}).items():
+                        for app in apps:
+                            if app in line and 'grep' not in line:
+                                # Found a running GUI app
+                                parts = line.split()
+                                if len(parts) > 1:
+                                    info["process_id"] = parts[1]
+                                    info["app_name"] = app
+                                    break
+                        if info.get("app_name"):
+                            break
+                    if info.get("app_name"):
+                        break
+        except Exception as e:
+            logger.debug(f"Failed to get Wayland window info: {e}")
+        
+        return info
+    
+    def _get_process_working_directory(self, pid: str) -> Optional[str]:
+        """Get the working directory of a process"""
         try:
             cwd_path = f"/proc/{pid}/cwd"
             if os.path.exists(cwd_path):
                 return os.readlink(cwd_path)
         except Exception as e:
-            logger.debug(f"Could not get working directory for PID {pid}: {e}")
+            logger.debug(f"Failed to get working directory for PID {pid}: {e}")
         
-        return os.getcwd()
-    
-    def get_git_status(self, working_dir: str) -> str:
-        """Get git status if in a git repository"""
-        try:
-            result = subprocess.run(['git', 'status', '--porcelain'], 
-                                  cwd=working_dir, capture_output=True, text=True, timeout=3)
-            if result.returncode == 0:
-                if result.stdout.strip():
-                    return "modified files"
-                else:
-                    return "clean"
-            else:
-                return "not a git repo"
-        except Exception:
-            return "not a git repo"
-    
-    def detect_context_type(self, window_info: Dict[str, str]) -> str:
-        """Detect which context profile to use"""
-        app_name = window_info.get('app_name', '').lower()
-        
-        for context_name, context_config in self.contexts.items():
-            if context_name == 'default':
-                continue
-            for app in context_config['apps']:
-                if app.lower() in app_name or app_name.startswith(app.lower()):
-                    return context_name
-        
-        return 'default'
+        return None
     
     def build_context_prompt(self) -> str:
-        """Build context-aware prompt for LLM"""
+        """Build a context-aware prompt for the LLM"""
         window_info = self.get_active_window_info()
-        context_type = self.detect_context_type(window_info)
-        context_config = self.contexts.get(context_type, self.contexts['default'])
         
-        logger.info(f"Detected context: {context_type} for app: {window_info.get('app_name', 'unknown')}")
+        prompt_parts = ["Context information for the screenshot:"]
         
-        # Build context variables
-        context_vars = {
-            'app': window_info.get('app_name', 'unknown'),
-            'window_title': window_info.get('window_title', ''),
-        }
+        # Add application context
+        app_name = window_info.get("app_name", "unknown")
+        if app_name != "unknown":
+            app_type = self._categorize_application(app_name)
+            prompt_parts.append(f"- Active application: {app_name} ({app_type})")
         
-        # Add context-specific variables
-        if context_type == 'terminal':
-            working_dir = self.get_working_directory(window_info.get('pid', ''))
-            context_vars.update({
-                'pwd': working_dir,
-                'git_status': self.get_git_status(working_dir)
-            })
-        elif context_type == 'vscode':
-            working_dir = self.get_working_directory(window_info.get('pid', ''))
-            context_vars.update({
-                'project': os.path.basename(working_dir) if working_dir else 'unknown',
-                'file': 'current file',  # Would need VS Code API for this
-                'language': 'unknown'  # Would need to detect from file extension
-            })
-        elif context_type == 'browser':
-            # For browser, we'd need to extract URL from window title or use browser API
-            context_vars.update({
-                'url': 'current page',
-                'title': window_info.get('window_title', '')
-            })
+        # Add window title if available
+        window_title = window_info.get("window_title", "")
+        if window_title:
+            prompt_parts.append(f"- Window title: {window_title}")
         
-        # Format the prompt template
+        # Add working directory context
+        working_dir = window_info.get("working_directory", "")
+        if working_dir:
+            project_context = self._analyze_directory_context(working_dir)
+            prompt_parts.append(f"- Working directory: {working_dir}")
+            if project_context:
+                prompt_parts.append(f"- Project type: {project_context}")
+        
+        # Add environment information
+        desktop_env = os.environ.get('DESKTOP_SESSION', 'unknown')
+        if desktop_env != 'unknown':
+            prompt_parts.append(f"- Desktop environment: {desktop_env}")
+        
+        return "\n".join(prompt_parts)
+    
+    def _categorize_application(self, app_name: str) -> str:
+        """Categorize an application by type"""
+        app_name_lower = app_name.lower()
+        
+        for category, apps in self.contexts_config.get("applications", {}).items():
+            if any(app in app_name_lower for app in apps):
+                return category
+        
+        return "application"
+    
+    def _analyze_directory_context(self, directory: str) -> Optional[str]:
+        """Analyze directory to determine project type"""
         try:
-            prompt = context_config['prompt_template'].format(**context_vars)
-        except KeyError as e:
-            logger.warning(f"Missing context variable {e}, using default prompt")
-            prompt = f"I'm using {context_vars.get('app', 'an application')}. Help me with:"
+            dir_path = Path(directory)
+            if not dir_path.exists():
+                return None
+            
+            # Check for common project files
+            project_indicators = {
+                "package.json": "Node.js/JavaScript",
+                "requirements.txt": "Python",
+                "Pipfile": "Python (Pipenv)",
+                "pyproject.toml": "Python (Poetry)",
+                "Cargo.toml": "Rust",
+                "go.mod": "Go",
+                "pom.xml": "Java (Maven)",
+                "build.gradle": "Java (Gradle)",
+                "composer.json": "PHP",
+                "Gemfile": "Ruby",
+                "mix.exs": "Elixir",
+                "pubspec.yaml": "Dart/Flutter",
+                "CMakeLists.txt": "C/C++ (CMake)",
+                "Makefile": "C/C++/Make",
+                ".gitignore": "Git repository",
+                "docker-compose.yml": "Docker project",
+                "Dockerfile": "Docker project"
+            }
+            
+            for file, project_type in project_indicators.items():
+                if (dir_path / file).exists():
+                    return project_type
+            
+            # Check file extensions in directory
+            file_extensions = []
+            for file in dir_path.iterdir():
+                if file.is_file():
+                    file_extensions.append(file.suffix.lower())
+            
+            # Analyze predominant file types
+            for file_type, extensions in self.contexts_config.get("file_extensions", {}).items():
+                if any(ext in file_extensions for ext in extensions):
+                    return f"{file_type} project"
+            
+        except Exception as e:
+            logger.debug(f"Failed to analyze directory context: {e}")
         
-        return prompt
+        return None
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    
     detector = ContextDetector()
+    
+    # Test window info detection
     window_info = detector.get_active_window_info()
-    print(f"Window info: {window_info}")
-    prompt = detector.build_context_prompt()
-    print(f"Context prompt: {prompt}")
+    print("Window Info:")
+    for key, value in window_info.items():
+        print(f"  {key}: {value}")
+    
+    # Test context prompt building
+    print("\nContext Prompt:")
+    print(detector.build_context_prompt())

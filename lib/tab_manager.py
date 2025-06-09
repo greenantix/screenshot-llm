@@ -1,230 +1,303 @@
+#!/usr/bin/env python3
+"""
+Tab manager for Screenshot LLM Assistant
+"""
+
 import tkinter as tk
 from tkinter import ttk
-from typing import Dict, Optional, Callable
+from typing import Dict, Optional
 from .conversation_manager import ConversationManager
-from .logger import get_logger
-
 from .logger import get_logger, log_exception
 
-logger = get_logger()
+logger = get_logger(__name__)
 
-class ConversationTab(ttk.Frame):
-    """Represents a single conversation tab"""
+class ChatTab:
+    """Represents a single chat tab"""
     
-    def __init__(self, parent, conversation_manager: ConversationManager, window):
-        super().__init__(parent)
+    def __init__(self, parent: ttk.Notebook, tab_id: str):
+        self.tab_id = tab_id
+        self.parent = parent
         
-        self.conversation_manager = conversation_manager
-        self.window = window  # Reference to main window for shared functionality
+        # Create main frame
+        self.frame = ttk.Frame(parent, style="Custom.TFrame")
+        
+        # Initialize conversation manager
+        self.conversation_manager = ConversationManager()
+        
+        # Create UI components
+        self._create_ui()
+        
+        # Add to notebook
+        parent.add(self.frame, text=f"Chat {tab_id}")
+    
+    def _create_ui(self):
+        """Create the tab's UI components"""
+        # Chat display area
+        chat_frame = ttk.Frame(self.frame, style="Custom.TFrame")
+        chat_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # Create text widget with scrollbar
-        self.create_text_widget()
+        self.chat_display = tk.Text(
+            chat_frame,
+            wrap=tk.WORD,
+            state=tk.DISABLED,
+            bg="#2d2d2d",
+            fg="#ffffff",
+            font=("SF Pro Display", 11),
+            insertbackground="#48b9c7",
+            selectbackground="#48b9c7",
+            selectforeground="#ffffff"
+        )
         
-        # Create input area
-        self.create_input_area()
+        scrollbar = ttk.Scrollbar(chat_frame, orient=tk.VERTICAL, command=self.chat_display.yview)
+        self.chat_display.configure(yscrollcommand=scrollbar.set)
         
-        # Store photo references
-        self._photo_references = []
+        # Pack chat display and scrollbar
+        self.chat_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Setup markdown tags
-        self.window._setup_markdown_tags(self.chat_display)
-
-    def create_text_widget(self):
-        """Create the main text display area"""
-        try:
-            # Create chat display frame
-            self.chat_frame = ttk.Frame(self, style="Custom.TFrame")
-            self.chat_frame.pack(fill=tk.BOTH, expand=True)
+        # Input area
+        input_frame = ttk.Frame(self.frame, style="Custom.TFrame")
+        input_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Input text widget
+        self.input_text = tk.Text(
+            input_frame,
+            height=3,
+            wrap=tk.WORD,
+            bg="#3c3c3c",
+            fg="#ffffff",
+            font=("SF Pro Display", 11),
+            insertbackground="#48b9c7"
+        )
+        self.input_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        
+        # Send button
+        self.send_button = ttk.Button(
+            input_frame,
+            text="Send",
+            style="Custom.TButton",
+            command=self._on_send
+        )
+        self.send_button.pack(side=tk.RIGHT)
+        
+        # Bind Enter key to send (Ctrl+Enter for new line)
+        self.input_text.bind("<Return>", self._on_enter_key)
+        self.input_text.bind("<Control-Return>", self._on_ctrl_enter)
+        
+        # Initialize markdown tags
+        self._setup_markdown_tags()
+    
+    def _setup_markdown_tags(self):
+        """Configure markdown formatting tags for the chat display"""
+        tag_configs = {
+            "bold": {"font": ("SF Pro Display", 11, "bold")},
+            "italic": {"font": ("SF Pro Display", 11, "italic")},
+            "code": {
+                "font": ("SF Mono", 10),
+                "background": "#363636",
+                "foreground": "#48b9c7"
+            },
+            "code_block": {
+                "font": ("SF Mono", 10),
+                "background": "#363636",
+                "spacing1": 10,
+                "spacing3": 10,
+                "lmargin1": 10,
+                "lmargin2": 10
+            },
+            "link": {
+                "foreground": "#48b9c7",
+                "underline": True
+            },
+            "blockquote": {
+                "lmargin1": 20,
+                "lmargin2": 20,
+                "background": "#363636",
+                "font": ("SF Pro Display", 11, "italic")
+            },
+            "hr": {
+                "foreground": "#48b9c7",
+                "spacing1": 10,
+                "spacing3": 10,
+                "justify": "center"
+            },
+            "header1": {
+                "font": ("SF Pro Display", 16, "bold"),
+                "spacing1": 10,
+                "spacing3": 5
+            },
+            "header2": {
+                "font": ("SF Pro Display", 14, "bold"),
+                "spacing1": 8,
+                "spacing3": 4
+            },
+            "header3": {
+                "font": ("SF Pro Display", 12, "bold"),
+                "spacing1": 6,
+                "spacing3": 3
+            }
+        }
+        
+        for tag, config in tag_configs.items():
+            self.chat_display.tag_configure(tag, **config)
+    
+    def _on_enter_key(self, event):
+        """Handle Enter key press"""
+        # Check if Shift is held for new line
+        if event.state & 0x1:  # Shift key
+            return  # Allow default behavior (new line)
+        else:
+            self._on_send()
+            return "break"  # Prevent default behavior
+    
+    def _on_ctrl_enter(self, event):
+        """Handle Ctrl+Enter for new line"""
+        self.input_text.insert(tk.INSERT, "\n")
+        return "break"
+    
+    def _on_send(self):
+        """Handle send button click"""
+        message = self.get_input_text().strip()
+        if message:
+            self.clear_input()
+            # Find the chat window and call its message handler
+            widget = self.parent
+            while widget:
+                if hasattr(widget, '_send_message_from_tab'):
+                    widget._send_message_from_tab(self, message)
+                    return
+                widget = widget.master if hasattr(widget, 'master') else None
             
-            # Create text widget with scrollbar
-            self.chat_display = tk.Text(
-                self.chat_frame,
-                wrap=tk.WORD,
-                bg="#2d2d2d",
-                fg="#ffffff",
-                font=("SF Pro Display", 11),
-                padx=10,
-                pady=10,
-                insertbackground="#ffffff",  # Cursor color
-                state=tk.DISABLED  # Start in disabled state
-            )
-            
-            # Add scrollbar
-            self.scrollbar = ttk.Scrollbar(
-                self.chat_frame,
-                orient=tk.VERTICAL,
-                command=self.chat_display.yview
-            )
-            self.chat_display.configure(yscrollcommand=self.scrollbar.set)
-            
-            # Pack widgets
-            self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-            self.chat_display.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            
-        except Exception as e:
-            logger.log_exception(e, "Failed to create text widget")
-            raise
-
-    def create_input_area(self):
-        """Create the input area for messages"""
-        try:
-            # Create input frame
-            self.input_frame = ttk.Frame(self, style="Custom.TFrame")
-            self.input_frame.pack(fill=tk.X, pady=(10, 0))
-            
-            # Create input field
-            self.input_field = tk.Text(
-                self.input_frame,
-                height=3,
-                bg="#2d2d2d",
-                fg="#ffffff",
-                font=("SF Pro Display", 11),
-                padx=5,
-                pady=5,
-                insertbackground="#ffffff",  # Cursor color
-                undo=True  # Enable undo/redo
-            )
-            self.input_field.pack(side=tk.LEFT, fill=tk.X, expand=True)
-            
-            # Create send button
-            self.send_button = ttk.Button(
-                self.input_frame,
-                text="Send",
-                style="Custom.TButton",
-                command=lambda: self.window._send_message()
-            )
-            self.send_button.pack(side=tk.RIGHT, padx=(10, 0))
-            
-            # Bind Enter key to send (Shift+Enter for newline)
-            self.input_field.bind("<Return>", lambda e: self.window._send_message() if not e.state & 0x1 else None)
-            
-        except Exception as e:
-            logger.log_exception(e, "Failed to create input area")
-            raise
-
+            # Fallback: just add the message locally
+            self.add_message("You", message, "user")
+    
     def get_input_text(self) -> str:
         """Get text from input field"""
-        try:
-            return self.input_field.get("1.0", tk.END).strip()
-        except Exception as e:
-            logger.log_exception(e, "Failed to get input text")
-            return ""
-
+        return self.input_text.get("1.0", tk.END).strip()
+    
     def clear_input(self):
         """Clear the input field"""
+        self.input_text.delete("1.0", tk.END)
+    
+    def add_message(self, sender: str, content: str, role: str = "user"):
+        """Add a message to the chat display"""
         try:
-            self.input_field.delete("1.0", tk.END)
-        except Exception as e:
-            logger.log_exception(e, "Failed to clear input")
-
-    def display_message(self, message: str, tags: tuple = ()):
-        """Display a message in the chat display"""
-        try:
+            # Enable editing
             self.chat_display.configure(state=tk.NORMAL)
-            self.chat_display.insert(tk.END, message, tags)
+            
+            # Add timestamp and sender
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%H:%M")
+            
+            self.chat_display.insert(tk.END, f"[{timestamp}] ", "timestamp")
+            self.chat_display.insert(tk.END, f"{sender}: ", "bold")
+            
+            # Add content (this could be enhanced with markdown parsing)
+            self.chat_display.insert(tk.END, content)
+            self.chat_display.insert(tk.END, "\n\n")
+            
+            # Add to conversation
+            self.conversation_manager.add_message(role, content)
+            
+            # Disable editing and scroll to bottom
             self.chat_display.configure(state=tk.DISABLED)
             self.chat_display.see(tk.END)
+            
         except Exception as e:
-            logger.log_exception(e, "Failed to display message")
+            log_exception(e, "Failed to add message to chat")
+    
+    def clear_chat(self):
+        """Clear the chat display"""
+        self.chat_display.configure(state=tk.NORMAL)
+        self.chat_display.delete("1.0", tk.END)
+        self.chat_display.configure(state=tk.DISABLED)
 
 class TabManager(ttk.Notebook):
-    """Manages multiple conversation tabs"""
+    """Manages multiple chat tabs"""
     
-    def __init__(self, parent, config: dict):
+    def __init__(self, parent, config: Dict):
         super().__init__(parent, style="Custom.TNotebook")
         
         self.config = config
-        self.tabs: Dict[str, ConversationTab] = {}
-        self._tab_counter = 0
-        self.window = self.winfo_toplevel()  # Get reference to main window
+        self.tabs: Dict[str, ChatTab] = {}
+        self.tab_counter = 0
         
-        # Bind tab events
-        self.bind("<<NotebookTabChanged>>", self._on_tab_changed)
-        
-        # Create initial tab
+        # Create first tab
         self.new_tab()
-
+    
     def new_tab(self) -> str:
-        """Create a new conversation tab"""
+        """Create a new chat tab"""
         try:
-            # Create unique tab ID
-            tab_id = f"tab_{self._tab_counter}"
-            self._tab_counter += 1
+            self.tab_counter += 1
+            tab_id = str(self.tab_counter)
             
-            # Create conversation manager for this tab
-            conversation_manager = ConversationManager()
-            
-            # Create and set up tab
-            tab = ConversationTab(self, conversation_manager, self.window)
+            # Create new tab
+            tab = ChatTab(self, tab_id)
             self.tabs[tab_id] = tab
             
-            # Add to notebook with default name and close button
-            self.add(tab, text=f"Chat {len(self.tabs)}")
-            
-            # Set up tab styles and markdown tags
-            if hasattr(self.window, '_setup_markdown_tags'):
-                self.window._setup_markdown_tags(tab.chat_display)
-            
-            # Switch to new tab
-            self.select(tab)
+            # Select the new tab
+            self.select(tab.frame)
             
             logger.info(f"Created new tab: {tab_id}")
             return tab_id
             
         except Exception as e:
             log_exception(e, "Failed to create new tab")
-            raise
-
+            return ""
+    
     def close_tab(self, tab_id: str):
-        """Close a conversation tab"""
+        """Close a specific tab"""
+        if tab_id not in self.tabs:
+            return
+        
         try:
-            if tab_id in self.tabs:
-                # Save conversation
-                self.tabs[tab_id].conversation_manager.save_conversation()
-                
-                # Remove tab
-                tab_index = self.index(self.tabs[tab_id])
-                self.forget(tab_index)
-                
-                # Remove from dictionary
-                del self.tabs[tab_id]
-                
-                logger.info(f"Closed tab: {tab_id}")
-                
-                # Create new tab if last one closed
-                if not self.tabs:
-                    self.new_tab()
-                    
+            tab = self.tabs[tab_id]
+            
+            # Save conversation before closing
+            tab.conversation_manager.save_conversation()
+            
+            # Remove from notebook
+            self.forget(tab.frame)
+            
+            # Remove from our tracking
+            del self.tabs[tab_id]
+            
+            # If no tabs left, create a new one
+            if not self.tabs:
+                self.new_tab()
+            
+            logger.info(f"Closed tab: {tab_id}")
+            
         except Exception as e:
-            log_exception(e, "Failed to close tab")
-            raise
-
-    def get_current_tab(self) -> Optional[ConversationTab]:
+            log_exception(e, f"Failed to close tab {tab_id}")
+    
+    def get_current_tab(self) -> Optional[ChatTab]:
         """Get the currently selected tab"""
         try:
-            current = self.select()
-            for tab_id, tab in self.tabs.items():
-                if str(tab) == str(current):
+            current_widget = self.nametowidget(self.select())
+            
+            # Find the tab that owns this widget
+            for tab in self.tabs.values():
+                if tab.frame == current_widget:
                     return tab
+            
             return None
+            
         except Exception as e:
             log_exception(e, "Failed to get current tab")
             return None
+    
+    def get_tab_count(self) -> int:
+        """Get the number of open tabs"""
+        return len(self.tabs)
 
-    def _on_tab_changed(self, event):
-        """Handle tab change events"""
-        try:
-            current_tab = self.get_current_tab()
-            if current_tab:
-                # Give focus to input field
-                current_tab.input_field.focus_set()
-        except Exception as e:
-            log_exception(e, "Error handling tab change")
-
-    def cleanup(self):
-        """Clean up all tabs"""
-        for tab_id in list(self.tabs.keys()):
-            try:
-                self.close_tab(tab_id)
-            except:
-                pass
+if __name__ == "__main__":
+    # Test the tab manager
+    root = tk.Tk()
+    root.geometry("800x600")
+    
+    tab_manager = TabManager(root, {})
+    tab_manager.pack(fill=tk.BOTH, expand=True)
+    
+    root.mainloop()

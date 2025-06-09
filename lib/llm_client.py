@@ -12,58 +12,43 @@ from PIL import Image
 logger = logging.getLogger(__name__)
 
 class LLMClient:
-    def __init__(self, config_file: str = "~/.local/share/screenshot-llm/config/config.json"):
-        self.config_file = os.path.expanduser(config_file)
-        self.config = self._load_config()
+    def __init__(self, llm_config: Dict):
+        self.config = self._validate_config(llm_config)
         self.client = None
         self._initialize_client()
-    
-    def _load_config(self) -> dict:
-        """Load API configuration"""
-        try:
-            with open(self.config_file, 'r') as f:
-                full_config = json.load(f)
-                
-            # Extract LLM config
-            config = full_config.get('llm', {})
-            
-            # Check for API key in environment if not in config
-            if not config.get('api_key'):
-                if config.get('provider') == 'anthropic':
-                    config['api_key'] = os.environ.get('ANTHROPIC_API_KEY', '')
-                elif config.get('provider') == 'openai':
-                    config['api_key'] = os.environ.get('OPENAI_API_KEY', '')
-            
-            # Ensure all required fields are present
-            default_config = {
-                'provider': 'openai',
-                'api_key': '',
-                'model': 'gpt-4-vision-preview',
-                'max_tokens': 4096,
-                'temperature': 0.7
-            }
-            
-            if config.get('provider') == 'anthropic':
-                default_config['model'] = 'claude-3-haiku-20240307'
-            
-            # Update default config with loaded values
-            default_config.update(config)
-            return default_config
-            
-        except Exception as e:
-            logger.error(f"Could not load config: {e}")
-            return {
-                'provider': 'openai',
-                'api_key': '',
-                'model': 'gpt-4-vision-preview',
-                'max_tokens': 4096,
-                'temperature': 0.7
-            }
+
+    def _validate_config(self, llm_config: Dict) -> dict:
+        """Validate and set defaults for the LLM configuration."""
+        # Check for API key in environment if not in config
+        if not llm_config.get('api_key'):
+            provider = llm_config.get('provider', 'openai')
+            if provider == 'anthropic':
+                llm_config['api_key'] = os.environ.get('ANTHROPIC_API_KEY', '')
+            else: # default to openai
+                llm_config['api_key'] = os.environ.get('OPENAI_API_KEY', '')
+        
+        # Set defaults
+        defaults = {
+            'provider': 'openai',
+            'model': 'gpt-4o',
+            'max_tokens': 4096,
+            'temperature': 0.7
+        }
+        
+        if llm_config.get('provider') == 'anthropic':
+            defaults['model'] = 'claude-3-5-sonnet-20241022'
+        
+        # Merge defaults with provided config
+        config = defaults.copy()
+        config.update(llm_config)
+        return config
     
     def _initialize_client(self):
         """Initialize the appropriate LLM client"""
-        if not self.config.get('api_key'):
-            logger.error("No API key configured")
+        if not self.config.get('api_key') or self.config.get('api_key') == '':
+            provider = self.config.get('provider', 'openai')
+            env_var = 'OPENAI_API_KEY' if provider == 'openai' else 'ANTHROPIC_API_KEY'
+            logger.error(f"No API key configured for {provider}. Please set {env_var} environment variable or update config/config.json")
             return
             
         try:
@@ -115,6 +100,23 @@ class LLMClient:
                 
         except Exception as e:
             logger.error(f"Failed to send screenshot to LLM: {e}")
+            raise
+    
+    async def send_conversation(self, messages: list, context_prompt: str = "") -> str:
+        """Send conversation with context to LLM"""
+        if not self.client:
+            raise Exception("LLM client not initialized")
+        
+        try:
+            if self.config['provider'] == 'anthropic':
+                return await self._send_anthropic_conversation(messages, context_prompt)
+            elif self.config['provider'] == 'openai':
+                return await self._send_openai_conversation(messages, context_prompt)
+            else:
+                raise Exception(f"Unsupported provider: {self.config['provider']}")
+                
+        except Exception as e:
+            logger.error(f"Failed to send conversation to LLM: {e}")
             raise
     
     async def _send_anthropic(self, image_data: str, mime_type: str, context_prompt: str) -> str:
@@ -196,6 +198,67 @@ class LLMClient:
         except Exception as e:
             logger.error(f"Failed to update API key: {e}")
             raise
+    
+    async def _send_anthropic_conversation(self, messages: list, context_prompt: str = "") -> str:
+        """Send conversation to Anthropic Claude"""
+        # Format messages for Anthropic
+        formatted_messages = []
+        
+        for msg in messages:
+            if msg.get("role") == "system":
+                continue  # System messages handled separately
+            
+            content = msg.get("content", "")
+            if isinstance(content, list):
+                # Handle multipart content (text + images)
+                formatted_messages.append({
+                    "role": msg["role"],
+                    "content": content
+                })
+            else:
+                # Simple text content
+                formatted_messages.append({
+                    "role": msg["role"],
+                    "content": content
+                })
+        
+        # Add system prompt if provided
+        system_prompt = context_prompt if context_prompt else "You are a helpful AI assistant."
+        
+        response = await self.client.messages.create(
+            model=self.config['model'],
+            max_tokens=self.config['max_tokens'],
+            system=system_prompt,
+            messages=formatted_messages
+        )
+        
+        return response.content[0].text
+    
+    async def _send_openai_conversation(self, messages: list, context_prompt: str = "") -> str:
+        """Send conversation to OpenAI"""
+        # Format messages for OpenAI
+        formatted_messages = []
+        
+        # Add system message if provided
+        if context_prompt:
+            formatted_messages.append({
+                "role": "system",
+                "content": context_prompt
+            })
+        
+        for msg in messages:
+            formatted_messages.append({
+                "role": msg["role"],
+                "content": msg.get("content", "")
+            })
+        
+        response = await self.client.chat.completions.create(
+            model=self.config['model'],
+            max_tokens=self.config['max_tokens'],
+            messages=formatted_messages
+        )
+        
+        return response.choices[0].message.content
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

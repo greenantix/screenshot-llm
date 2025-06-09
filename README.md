@@ -1,290 +1,279 @@
-# Screenshot LLM Assistant v2.0 - Interactive Persistent Chat
+# Screenshot LLM Assistant
 
-A powerful desktop assistant that captures screenshots and provides intelligent analysis through a persistent, interactive chat interface. Now features continuous conversations, context preservation, and a modern GUI.
-
-## ✨ New Features in v2.0
-
-- **🗨️ Persistent Chat Interface**: Modern Tkinter-based window that stays open for continuous interaction
-- **💬 Conversation History**: Full context preservation across screenshots and user messages  
-- **🔄 Inter-Process Communication**: Robust IPC between screenshot daemon and chat GUI
-- **💾 Conversation Persistence**: Save, load, and manage conversation sessions
-- **🖼️ Screenshot Thumbnails**: Visual preview of screenshots with full-size viewing
-- **⌨️ Keyboard Shortcuts**: Efficient navigation and control
-- **🎛️ System Tray Integration**: Minimizes to tray instead of closing
+A powerful desktop application that captures screenshots and analyzes them using AI models (OpenAI GPT-4 Vision or Anthropic Claude) to provide intelligent assistance and suggestions.
 
 ## Features
 
-### Core Functionality
-- **Automatic Screenshot Capture**: Triggers on mouse button 9 press
-- **Multi-Monitor Support**: Captures the screen containing the cursor
-- **Context-Aware Prompts**: Detects active applications and working directories
-- **Multiple LLM Providers**: Supports both Anthropic Claude and OpenAI GPT
-- **Optimized Image Processing**: Automatically resizes images for efficient API transmission
-
-### Chat Interface
-- **Interactive Conversations**: Ask follow-up questions about screenshots
-- **Message History**: Scrollable conversation with timestamps
-- **Visual Screenshots**: Embedded thumbnails with click-to-expand
-- **Export Options**: Save conversations as text files
-- **Multiple Sessions**: Create, load, and manage different conversation threads
+- **Smart Screenshot Capture**: Automatically detects context and captures screenshots
+- **AI Analysis**: Uses GPT-4 Vision or Claude to analyze screenshots and provide helpful suggestions
+- **Context Awareness**: Detects active applications, window titles, and working directories
+- **Persistent Chat Interface**: Tabbed conversation interface with markdown support
+- **System Tray Integration**: Minimizes to system tray for background operation
+- **Mouse Button Trigger**: Configurable mouse button for quick screenshot capture
+- **Cross-Platform Support**: Works on Linux (X11 and Wayland), with planned Windows/macOS support
 
 ## Installation
 
-1. Clone or download this repository to `~/.local/share/screenshot-llm`
+### Prerequisites
 
-2. Install system dependencies:
+- Python 3.8 or higher
+- Linux desktop environment (GNOME, KDE, XFCE, etc.)
+- One of the following screenshot tools:
+  - `grim` (Wayland)
+  - `maim` (X11, recommended)
+  - `scrot` (X11)
+  - `gnome-screenshot`
+  - `spectacle` (KDE)
+
+### Install Screenshot Tools
+
+#### Ubuntu/Debian:
 ```bash
-sudo apt install python3-tk grim wlr-randr maim scrot xdotool zenity
+sudo apt update
+sudo apt install maim xdotool python3-tk python3-pip
 ```
 
-3. Install Python dependencies:
+#### Fedora/RHEL:
 ```bash
+sudo dnf install maim xdotool tkinter python3-pip
+```
+
+#### Arch Linux:
+```bash
+sudo pacman -S maim xorg-xdotool tk python-pip
+```
+
+### Install Python Dependencies
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd screenshot-llm-assistant
+
+# Install Python dependencies
 pip install -r requirements.txt
 ```
 
-4. Configure your API key:
-```bash
-# Edit the config file
-nano ~/.local/share/screenshot-llm/config/config.json
-
-# Or set environment variable
-export ANTHROPIC_API_KEY="your-api-key-here"
-# or
-export OPENAI_API_KEY="your-api-key-here"
-```
-
-## Quick Start
-
-### Option 1: Start Complete System
-```bash
-# Start both daemon and GUI with monitoring
-python start-screenshot-llm.py
-
-# Start GUI minimized to tray
-python start-screenshot-llm.py --minimized
-
-# Start daemon first (fallback mode)
-python start-screenshot-llm.py --daemon-first
-```
-
-### Option 2: Start Components Separately
-```bash
-# Start GUI only
-python screenshot-llm-gui.py
-
-# Start daemon only (uses zenity fallback)
-python screenshot-llm.py
-
-# Start GUI minimized
-python screenshot-llm-gui.py --minimized
-```
-
-### Option 3: Install as System Service
-```bash
-python screenshot-llm.py --install-service
-systemctl --user enable screenshot-llm.service
-systemctl --user start screenshot-llm.service
-```
-
-## Usage Workflow
-
-1. **Take Screenshot**: Press mouse button 9 (side button)
-2. **Automatic Processing**: Screenshot appears in chat window with LLM analysis
-3. **Interactive Follow-up**: Type questions about the screenshot or ask for help
-4. **Continuous Context**: Each new screenshot adds to the ongoing conversation
-5. **Session Management**: Save conversations, start new ones, or load previous sessions
-
-### Keyboard Shortcuts
-
-- `Ctrl+Enter`: Send message
-- `Ctrl+N`: New conversation
-- `Ctrl+S`: Save conversation
-- `Ctrl+Q`: Quit application
-- `Esc`: Minimize to tray
-- `Ctrl+C`: Copy selected text
-- `Ctrl+Shift+C`: Copy entire conversation
-
 ## Configuration
 
-Edit `config/config.json`:
+### 1. Set up API Keys
 
+**Quick Setup (Recommended)**:
+```bash
+# Run the interactive setup script
+python setup-api-key.py
+```
+
+**Manual Setup**:
+
+#### Option A: Environment Variables (Recommended)
+```bash
+# For OpenAI
+export OPENAI_API_KEY="your-openai-api-key"
+
+# For Anthropic
+export ANTHROPIC_API_KEY="your-anthropic-api-key"
+
+# Make permanent by adding to ~/.bashrc or ~/.zshrc
+echo 'export OPENAI_API_KEY="your-openai-api-key"' >> ~/.bashrc
+```
+
+#### Option B: Edit config/config.json
 ```json
 {
-  "provider": "anthropic",
-  "api_key": "your-api-key",
-  "model": "claude-3-5-haiku-20241022",
-  "max_tokens": 4096,
-  "screenshot_dir": "~/.local/share/screenshot-llm/cache",
-  "history_dir": "~/.local/share/screenshot-llm/history", 
-  "mouse_button": 9,
-  "auto_delete_screenshots": true,
-  "persistent_chat": true,
-  "auto_save_conversations": true,
-  "max_conversation_length": 50,
-  "window_always_on_top": false,
-  "start_minimized": false
+  "llm": {
+    "provider": "openai",
+    "api_key": "your-openai-api-key",
+    "model": "gpt-4o",
+    "max_tokens": 4096,
+    "temperature": 0.7
+  }
 }
 ```
 
-## Architecture
+**Valid Models:**
+- OpenAI: `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo` (with vision)
+- Anthropic: `claude-3-5-sonnet-20241022`, `claude-3-haiku-20240307`
 
-### System Components
+### 2. Configure Mouse Button (Optional)
 
-1. **Screenshot Daemon** (`screenshot-llm.py`): Captures screenshots and handles mouse events
-2. **Chat GUI** (`screenshot-llm-gui.py`): Persistent Tkinter window for conversations  
-3. **IPC Handler** (`lib/ipc_handler.py`): Unix socket communication between processes
-4. **Conversation Manager** (`lib/conversation.py`): Message history and persistence
-5. **Startup Manager** (`start-screenshot-llm.py`): Coordinates launching and monitoring
+The default configuration uses mouse button 9 (usually thumb button). To change this, edit the `mouse_button` setting in the daemon configuration.
 
-### Process Flow
+### 3. Test the Installation
 
+```bash
+# Test the GUI components
+python test-gui.py
+
+# Test screenshot capture
+python -m lib.screenshot
 ```
-[Mouse Button 9] → [Screenshot Daemon] → [IPC] → [Chat GUI] → [LLM API] → [Response Display]
-                                                     ↓
-                                              [User Input] → [LLM API] → [Response Display]
+
+## Usage
+
+### Starting the Application
+
+1. **Start the GUI (persistent mode)**:
+   ```bash
+   python screenshot-llm-gui.py
+   ```
+   The GUI will start and wait for screenshots from the daemon.
+
+2. **Start the daemon (screenshot capture)**:
+   ```bash
+   python screenshot-llm.py
+   ```
+   The daemon will listen for mouse button presses and capture screenshots.
+
+### Alternative: Run in background
+```bash
+# Start GUI minimized to tray
+python screenshot-llm-gui.py --minimized
+
+# Start daemon in background
+nohup python screenshot-llm.py &
 ```
 
-### Inter-Process Communication
+### Taking Screenshots
 
-- **Protocol**: Unix domain sockets for fast, secure local communication
-- **Message Types**: `screenshot`, `llm_response`, `show_window`, `hide_window`
-- **Reliability**: Automatic reconnection and fallback mechanisms
-- **Security**: User-only socket permissions
+1. **Mouse Button**: Press the configured mouse button (default: button 9) to capture a screenshot
+2. **Manual**: Run the daemon manually: `python screenshot-llm.py`
+3. **GUI**: Use the chat interface to ask questions about previously captured screenshots
+
+### Using the Chat Interface
+
+- **Multiple Tabs**: Create new conversation tabs with Ctrl+T
+- **Send Messages**: Type in the input area and press Enter (Shift+Enter for new lines)
+- **View Screenshots**: Click on thumbnail images to view full size
+- **Copy Text**: Ctrl+C for selected text, Ctrl+Shift+C for entire conversation
+- **Save/Load**: Ctrl+S to save, Ctrl+L to load previous conversations
+
+## Keyboard Shortcuts
+
+- `Ctrl+T`: New conversation tab
+- `Ctrl+W`: Close current tab
+- `Ctrl+N`: New conversation
+- `Ctrl+S`: Save conversation
+- `Ctrl+L`: Load conversation
+- `Ctrl+C`: Copy selected text
+- `Ctrl+Shift+C`: Copy entire conversation
+- `Escape`: Minimize to system tray
+- `Ctrl+Q`: Quit application
 
 ## File Structure
 
 ```
-~/.local/share/screenshot-llm/
-├── screenshot-llm.py              # Main daemon
-├── screenshot-llm-gui.py          # GUI process  
-├── start-screenshot-llm.py        # Startup coordinator
-├── zenity_display.py              # Fallback display
-├── test-persistent-chat.py        # Test suite
-├── lib/
-│   ├── mouse_listener.py          # Mouse event handling
-│   ├── screenshot.py              # Screenshot capture logic
-│   ├── context_detector.py        # Application context detection
-│   ├── llm_client.py             # LLM API integration
-│   ├── chat_window.py            # Persistent chat interface
-│   ├── conversation.py           # Conversation management
-│   ├── ipc_handler.py           # Inter-process communication
-│   ├── command_interface.py       # Legacy GUI formatting
-│   └── simple_interface.py        # Fallback display method
+screenshot-llm-assistant/
 ├── config/
-│   ├── config.json               # Main configuration
-│   └── contexts.json             # Context detection rules
-├── conversations/                # Saved conversation sessions
-├── cache/                        # Temporary screenshots
-├── history/                      # Legacy response history
-└── logs/                        # Application logs
-```
-
-## Testing
-
-Run the test suite to verify installation:
-
-```bash
-python test-persistent-chat.py
-```
-
-### Manual Testing
-
-```bash
-# Test screenshot capture
-python screenshot-llm.py --test-screenshot
-
-# Test context detection  
-python screenshot-llm.py --test-context
-
-# Test GUI standalone
-python screenshot-llm-gui.py
-
-# Test IPC communication
-python -c "from lib.ipc_handler import *; print('IPC imports OK')"
+│   ├── config.json          # Main configuration
+│   └── contexts.json        # Context detection rules
+├── lib/
+│   ├── chat_window.py       # Main GUI window
+│   ├── conversation_manager.py  # Conversation handling
+│   ├── context_detector.py  # Application context detection
+│   ├── image_processor.py   # Image optimization and thumbnails
+│   ├── ipc_handler.py       # Inter-process communication
+│   ├── llm_client.py        # AI model API client
+│   ├── logger.py            # Logging utilities
+│   ├── mouse_listener.py    # Mouse input handling
+│   ├── screenshot.py        # Screenshot capture
+│   ├── tab_manager.py       # Chat tab management
+│   └── tray_manager.py      # System tray integration
+├── conversations/           # Saved conversations
+├── logs/                   # Application logs
+├── screenshot-llm.py       # Main daemon script
+├── screenshot-llm-gui.py   # GUI launcher
+├── test-gui.py            # Test script
+├── requirements.txt        # Python dependencies
+└── README.md              # This file
 ```
 
 ## Troubleshooting
 
-### GUI Issues
-```bash
-# Check if GUI process is running
-ps aux | grep screenshot-llm-gui
+### Common Issues
 
-# Restart GUI only
-pkill -f screenshot-llm-gui
-python screenshot-llm-gui.py
+1. **"No screenshot tool found"**
+   - Install a screenshot tool: `sudo apt install maim` (Ubuntu/Debian)
+   - Check if tools are in PATH: `which maim`
+
+2. **"Permission denied" for mouse events**
+   - Add user to input group: `sudo usermod -a -G input $USER`
+   - Log out and back in
+   - Or run with sudo (not recommended)
+
+3. **"API key not configured"**
+   - Set your API key in `config/config.json`
+   - Or set environment variable: `export OPENAI_API_KEY="your-key"`
+
+4. **GUI doesn't show screenshots**
+   - Check if daemon is running: `ps aux | grep screenshot-llm`
+   - Check logs in `logs/` directory
+   - Ensure IPC socket permissions are correct
+
+5. **Screenshots are black/empty**
+   - Some applications block screenshots for security
+   - Try different screenshot tools
+   - Check if running under Wayland (may need additional setup)
+
+### Debug Mode
+
+Run with debug logging:
+```bash
+# Enable debug logging
+export PYTHONPATH=.
+python -c "
+import logging
+logging.basicConfig(level=logging.DEBUG)
+from lib.chat_window import PersistentChatWindow
+window = PersistentChatWindow()
+window.mainloop()
+"
 ```
 
-### IPC Connection Issues
-```bash
-# Check IPC socket
-ls -la ~/.local/share/screenshot-llm/screenshot-llm.sock
+### Log Files
 
-# Clear stale socket
-rm ~/.local/share/screenshot-llm/screenshot-llm.sock
+Check the following log files for debugging:
+- `logs/screenshot-llm-gui.log` - GUI application logs
+- `logs/screenshot-llm-daemon.log` - Screenshot daemon logs
+
+## Development
+
+### Running Tests
+```bash
+# Test GUI components
+python test-gui.py
+
+# Test individual modules
+python -m lib.screenshot
+python -m lib.context_detector
+python -m lib.llm_client
 ```
 
-### Permission Issues
-```bash
-# Add user to input group for mouse access
-sudo usermod -a -G input $USER
-# Log out and back in
-```
+### Contributing
 
-### Missing Screenshot Tools
-```bash
-# Wayland
-sudo apt install grim wlr-randr
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new functionality
+5. Submit a pull request
 
-# X11
-sudo apt install maim scrot xdotool
-```
+## Security Notes
 
-### Conversation Loading Issues
-```bash
-# Check conversation directory
-ls ~/.local/share/screenshot-llm/conversations/
-
-# Verify JSON format
-python -m json.tool ~/.local/share/screenshot-llm/conversations/conversation_*.json
-```
-
-## Dependencies
-
-- **Core**: Python 3.8+, evdev, Pillow, tkinter
-- **LLM Clients**: anthropic, openai
-- **Screenshot Tools**:
-  - Wayland: `grim`, `wlr-randr`
-  - X11: `maim` or `scrot`, `xrandr`, `xdotool`
-- **GUI**: tkinter (built-in), Pillow for image handling
-- **Fallback**: `zenity` or `PyGObject`
-
-## Migration from v1.0
-
-The new persistent chat system is fully backward compatible:
-
-- **Existing configs**: Work unchanged
-- **Service files**: Continue to work with new daemon
-- **Fallback mode**: If GUI unavailable, falls back to original zenity behavior
-- **Manual migration**: Old response history in `history/` can be referenced but won't auto-import
-
-## Performance & Resource Usage
-
-- **Memory**: ~50-100MB for GUI process, ~20-30MB for daemon
-- **CPU**: Minimal when idle, brief spikes during screenshot processing
-- **Storage**: Conversations stored as compact JSON files
-- **Network**: Only during LLM API calls
-
-## Future Enhancements
-
-- Multiple conversation tabs
-- Code syntax highlighting in responses  
-- Quick action buttons (copy commands, run in terminal)
-- Search within conversations
-- Conversation templates for different contexts
-- Export as Markdown with embedded images
-- Voice input/output integration
+- API keys are stored in plain text in `config/config.json`
+- Consider using environment variables for production deployment
+- Screenshots may contain sensitive information - they are stored temporarily
+- IPC socket uses user-only permissions (0o600)
 
 ## License
 
-This project is provided as-is for educational and personal use.
+This project is licensed under the MIT License. See LICENSE file for details.
+
+## Changelog
+
+### Version 1.0.0
+- Initial release
+- Basic screenshot capture and AI analysis
+- Tabbed chat interface
+- System tray integration
+- Context-aware prompts
+- Support for OpenAI and Anthropic APIs

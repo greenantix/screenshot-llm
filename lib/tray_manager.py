@@ -1,116 +1,146 @@
-import logging
-from typing import Callable, Optional
-import io
-import base64
-from PIL import Image
+#!/usr/bin/env python3
+"""
+System tray manager for Screenshot LLM Assistant
+"""
 
-logger = logging.getLogger(__name__)
+import threading
+from typing import Callable
+from .logger import get_logger, log_exception
 
-# Try to import pystray, but don't fail if not available
-try:
-    import pystray
-    TRAY_AVAILABLE = True
-except (ImportError, ValueError) as e:
-    logger.warning(f"System tray support not available: {e}")
-    TRAY_AVAILABLE = False
+logger = get_logger(__name__)
 
 class TrayManager:
+    """Manages system tray functionality"""
+    
     def __init__(self, show_window: Callable, quit_app: Callable):
         self.show_window = show_window
         self.quit_app = quit_app
         self.icon = None
+        self.running = False
         
-        if TRAY_AVAILABLE:
-            # Create and start tray icon in a separate thread
-            self.setup_tray()
-        else:
-            logger.warning("System tray functionality disabled")
-
-    def setup_tray(self):
-        """Setup the system tray icon and menu"""
+        self._setup_tray()
+    
+    def _setup_tray(self):
+        """Set up the system tray icon"""
         try:
-            # Create a simple icon (you should replace this with a proper icon file)
-            icon_data = self._create_default_icon()
+            import pystray
+            from PIL import Image, ImageDraw
             
-            # Create the menu
-            menu = (
-                pystray.MenuItem("Show Window", self._show_window),
-                pystray.MenuItem("Quit", self._quit_app)
-            )
+            # Create a simple icon
+            def create_icon():
+                # Create a simple 64x64 icon
+                width = 64
+                height = 64
+                
+                # Create image with transparent background
+                image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(image)
+                
+                # Draw a simple camera icon
+                # Camera body
+                draw.rectangle([8, 20, 56, 48], fill=(72, 185, 199, 255), outline=(255, 255, 255, 255))
+                
+                # Lens
+                draw.ellipse([20, 26, 44, 42], fill=(45, 45, 45, 255), outline=(255, 255, 255, 255))
+                draw.ellipse([24, 28, 40, 40], fill=(30, 30, 30, 255))
+                
+                # Flash
+                draw.rectangle([12, 16, 20, 20], fill=(255, 255, 255, 255))
+                
+                return image
             
-            # Create the icon
+            # Create menu
+            def create_menu():
+                return pystray.Menu(
+                    pystray.MenuItem("Show Window", self._on_show),
+                    pystray.MenuItem("Hide Window", self._on_hide),
+                    pystray.Menu.SEPARATOR,
+                    pystray.MenuItem("Quit", self._on_quit)
+                )
+            
+            # Create icon
             self.icon = pystray.Icon(
-                "Screenshot LLM",
-                icon_data,
+                "screenshot-llm",
+                create_icon(),
                 "Screenshot LLM Assistant",
-                menu
+                create_menu()
             )
             
-            # Run the icon in a separate thread
-            import threading
-            thread = threading.Thread(target=self._run_tray_icon, daemon=True)
-            thread.start()
-            logger.info("System tray icon initialized successfully")
+            # Set up click handler
+            self.icon.default_action = self._on_show
             
-        except Exception as e:
-            logger.error(f"Failed to setup system tray: {e}")
+            logger.info("System tray icon created")
+            
+        except ImportError:
+            logger.warning("pystray not available, tray functionality disabled")
             self.icon = None
-
-    def _run_tray_icon(self):
-        """Run the tray icon in a separate thread with error handling"""
-        try:
-            if self.icon:
-                self.icon.run()
         except Exception as e:
-            logger.error(f"Error running tray icon: {e}")
+            log_exception(e, "Failed to create system tray icon")
             self.icon = None
-
-    def _create_default_icon(self) -> Image:
-        """Create a simple default icon"""
-        # Base64 encoded 16x16 PNG icon (replace with your actual icon)
-        icon_base64 = """
-        iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABHNCSVQICAgIfAhkiAAAAAlwSFlz
-        AAAN1wAADdcBQiibeAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAABSdEVY
-        dENvcHlyaWdodABDQzAgUHVibGljIERvbWFpbiBEZWRpY2F0aW9uIGh0dHA6Ly9jcmVhdGl2ZWNv
-        bW1vbnMub3JnL3B1YmxpY2RvbWFpbi96ZXJvLzEuMC/g6ZTpAAAAPklEQVQ4jWNgGGjAiE3wPxAw
-        YYgzMWBK4gQsDAx4JXEBRnySyICJgYGBEZskMmBiYGD4z8DAQFASHcBVEgcAAKH5BRP1005kAAAA
-        AElFTkSuQmCC
-        """
-        
-        # Convert base64 to image
-        icon_data = base64.b64decode(icon_base64)
-        image = Image.open(io.BytesIO(icon_data))
-        return image
-
-    def _show_window(self, icon, item):
-        """Show the main window"""
-        if self.show_window:
-            self.show_window()
-
-    def _quit_app(self, icon, item):
-        """Quit the application"""
-        icon.stop()
-        if self.quit_app:
-            self.quit_app()
-
-    def update_icon(self, icon_path: str):
-        """Update the tray icon with a new image"""
-        try:
-            new_icon = Image.open(icon_path)
-            self.icon.icon = new_icon
-        except Exception as e:
-            print(f"Error updating tray icon: {e}")
-
-    def show_notification(self, title: str, message: str):
-        """Show a system notification"""
-        if self.icon:
-            self.icon.notify(title, message)
-
-    def cleanup(self):
-        """Clean up the tray icon"""
-        if self.icon:
+    
+    def start(self):
+        """Start the tray icon in a separate thread"""
+        if not self.icon:
+            return
+            
+        def run_tray():
             try:
-                self.icon.stop()
+                self.running = True
+                self.icon.run()
             except Exception as e:
-                logger.error(f"Error stopping tray icon: {e}")
-            self.icon = None
+                log_exception(e, "Tray icon crashed")
+        
+        self.tray_thread = threading.Thread(target=run_tray, daemon=True)
+        self.tray_thread.start()
+        logger.info("System tray started")
+    
+    def stop(self):
+        """Stop the tray icon"""
+        if self.icon and self.running:
+            self.running = False
+            self.icon.stop()
+            logger.info("System tray stopped")
+    
+    def _on_show(self, icon=None, item=None):
+        """Handle show window from tray"""
+        try:
+            self.show_window()
+        except Exception as e:
+            log_exception(e, "Failed to show window from tray")
+    
+    def _on_hide(self, icon=None, item=None):
+        """Handle hide window from tray"""
+        # This will be handled by the main window
+        pass
+    
+    def _on_quit(self, icon=None, item=None):
+        """Handle quit from tray"""
+        try:
+            self.stop()
+            self.quit_app()
+        except Exception as e:
+            log_exception(e, "Failed to quit from tray")
+    
+    def cleanup(self):
+        """Clean up tray resources"""
+        self.stop()
+
+if __name__ == "__main__":
+    # Test the tray manager
+    import time
+    
+    def show_callback():
+        print("Show window called")
+    
+    def quit_callback():
+        print("Quit called")
+    
+    tray = TrayManager(show_callback, quit_callback)
+    tray.start()
+    
+    try:
+        time.sleep(10)  # Run for 10 seconds
+    except KeyboardInterrupt:
+        pass
+    finally:
+        tray.cleanup()

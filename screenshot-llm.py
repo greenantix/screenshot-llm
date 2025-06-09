@@ -7,6 +7,7 @@ with context-aware prompts for intelligent assistance.
 """
 
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -14,6 +15,7 @@ import subprocess
 import signal
 import argparse
 from pathlib import Path
+from typing import Dict
 
 # Add lib directory to path
 lib_path = Path(__file__).parent / 'lib'
@@ -31,17 +33,33 @@ class ScreenshotLLMDaemon:
     def __init__(self, config_dir: str = "~/.local/share/screenshot-llm"):
         self.config_dir = os.path.expanduser(config_dir)
         self.running = False
+        self.config = self._load_full_config()
         
         # Initialize components
         self.mouse_listener = None
         self.screenshot_capture = ScreenshotCapture()
         self.context_detector = ContextDetector()
-        self.llm_client = LLMClient()
+        self.llm_client = LLMClient(self.config.get('llm', {}))
         self.ipc_manager = IPCManager(config_dir)
         self.ipc_client = None
         
         # Setup logging
         self._setup_logging()
+
+    def _load_full_config(self) -> Dict:
+        """Load the entire configuration file."""
+        config_path = os.path.join(self.config_dir, "config", "config.json")
+        if not os.path.exists(config_path):
+            # Fallback to current directory for local testing
+            config_path = "config/config.json"
+
+        try:
+            with open(config_path, 'r') as f:
+                logger.info(f"Loading configuration from: {config_path}")
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            logger.error(f"Failed to load config from {config_path}: {e}")
+            return {}
         
     def _setup_logging(self):
         """Setup logging configuration"""
@@ -90,6 +108,7 @@ class ScreenshotLLMDaemon:
                     
                     if success:
                         logger.info("Screenshot sent to GUI successfully")
+                        # Return early - GUI will handle LLM processing
                         return
                     else:
                         logger.warning("Failed to send to GUI despite server being available")
@@ -147,10 +166,14 @@ class ScreenshotLLMDaemon:
             logger.error("2. Or set ANTHROPIC_API_KEY environment variable")
             return
         
+        # Get mouse device path from the full config
+        mouse_device_path = self.config.get("advanced", {}).get("mouse_device_path", "")
+
         # Initialize mouse listener
         self.mouse_listener = MouseListener(
-            button_code=9,
-            callback=self.handle_screenshot_request
+            button_code=276,
+            callback=self.handle_screenshot_request,
+            device_path=mouse_device_path or None  # Pass None if path is empty
         )
         
         self.running = True

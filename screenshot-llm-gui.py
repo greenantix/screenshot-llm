@@ -9,7 +9,7 @@ import argparse
 import json
 from typing import Optional, Dict
 
-from lib.chat_window import ChatWindow
+from lib.chat_window import PersistentChatWindow
 from lib.logger import get_logger, log_exception
 from lib.image_processor import get_image_processor
 from lib.conversation_manager import ConversationManager
@@ -100,16 +100,8 @@ def main():
         if not config:
             sys.exit(1)
             
-        # Create main window
-        window = ChatWindow()
-        
-        # Apply configuration
-        if "ui" in config:
-            if "window" in config["ui"]:
-                window.geometry(f"{config['ui']['window']['default_width']}x" +
-                              f"{config['ui']['window']['default_height']}")
-                window.minsize(config['ui']['window']['min_width'],
-                             config['ui']['window']['min_height'])
+        # Create main window, passing the full config
+        window = PersistentChatWindow(config)
         
         # Start minimized if requested
         if args.minimized:
