@@ -53,7 +53,7 @@ class ScreenshotLLMStarter:
     
     def start_gui(self, minimized: bool = False):
         """Start the GUI process"""
-        gui_script = os.path.join(os.path.dirname(__file__), "screenshot-llm-gui.py")
+        gui_script = os.path.join(os.path.dirname(__file__), "lib", "gtk_chat_window.py")
         
         cmd = [sys.executable, gui_script, "--config-dir", self.config_dir]
         if minimized:

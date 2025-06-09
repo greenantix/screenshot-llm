@@ -336,7 +336,14 @@ class IPCManager:
         
     def create_server(self) -> IPCServer:
         """Create IPC server instance"""
-        return IPCServer(self.socket_path)
+        try:
+            logger.debug(f"Creating IPC server with socket path: {self.socket_path}")
+            server = IPCServer(self.socket_path)
+            logger.debug(f"IPC server created successfully: {server}")
+            return server
+        except Exception as e:
+            logger.error(f"Failed to create IPC server: {e}")
+            return None
     
     def create_client(self) -> IPCClient:
         """Create IPC client instance"""

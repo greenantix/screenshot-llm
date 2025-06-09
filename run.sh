@@ -4,9 +4,9 @@
 check_dependencies() {
     local missing=()
     
-    # Check Python dependencies
-    if ! python3 -c "import tkinter" 2>/dev/null; then
-        missing+=("python3-tk")
+    # Check Python dependencies for GTK
+    if ! python3 -c "import gi" 2>/dev/null; then
+        missing+=("python3-gi")
     fi
 
     # Check system dependencies for pystray
@@ -22,7 +22,7 @@ check_dependencies() {
     fi
     
     # Check system dependencies
-    dependencies=("grim" "wlr-randr" "maim" "scrot" "xdotool" "zenity")
+    dependencies=("grim" "wlr-randr" "maim" "scrot" "xdotool")
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
             missing+=("$dep")
@@ -49,10 +49,10 @@ start_app() {
     # Start GUI minimized if requested
     if [ "$1" == "--minimized" ]; then
         echo "Starting Screenshot LLM Assistant (minimized)..."
-        python3 screenshot-llm-gui.py --minimized &
+        python3 gtk-chat-gui.py --minimized &
     else
         echo "Starting Screenshot LLM Assistant..."
-        python3 screenshot-llm-gui.py &
+        python3 gtk-chat-gui.py &
     fi
     
     # Give GUI time to start
@@ -62,7 +62,7 @@ start_app() {
     echo "Starting screenshot daemon..."
     python3 screenshot-llm.py &
     
-    echo "Setup complete! Use Ctrl+Alt+P to take screenshots."
+    echo "Setup complete! Use mouse button 9 to take screenshots."
 }
 
 # Main script

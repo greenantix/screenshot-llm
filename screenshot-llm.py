@@ -26,6 +26,7 @@ from screenshot import ScreenshotCapture
 from context_detector import ContextDetector
 from llm_client import LLMClient
 from ipc_handler import IPCManager
+from cursor_utils import get_cursor_position
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,10 @@ class ScreenshotLLMDaemon:
         """Handle mouse button press - capture screenshot and process"""
         try:
             logger.info("Mouse button 9 pressed - processing screenshot request")
+
+            # Get cursor position early
+            cursor_pos = get_cursor_position()
+            logger.info(f"Cursor position: {cursor_pos}")
             
             # Check if GUI is running
             gui_available = self.ipc_manager.is_server_running()
@@ -110,40 +115,19 @@ class ScreenshotLLMDaemon:
             context_data = self.context_detector.get_active_window_info()
             logger.info(f"Context: {context_data}")
             
-            if gui_available:
-                # Try to send to GUI first
-                try:
-                    # Create new IPC client for fresh connection
-                    self.ipc_client = self.ipc_manager.create_client()
-                    
-                    logger.info("Sending screenshot to GUI...")
-                    success = await self.ipc_client.send_screenshot(screenshot_path, context_data)
-                    
-                    if success:
-                        logger.info("Screenshot sent to GUI successfully")
-                        return
-                        
-                except Exception as ipc_error:
-                    logger.error(f"IPC error: {ipc_error}")
-                finally:
-                    # Clean up IPC client
-                    if self.ipc_client:
-                        self.ipc_client.disconnect()
-                        self.ipc_client = None
-            
-            # If we reach here, either GUI is not running or communication failed
-            logger.info("Using zenity fallback for display")
+            # Get LLM response using quick prompt for pop-up
+            logger.info("Getting LLM response for pop-up...")
+            quick_prompt = self.config.get("llm", {}).get("quick_prompt", "Provide a brief analysis of the screenshot.")
             context_prompt = self.context_detector.build_context_prompt()
-            llm_response = await self.llm_client.send_screenshot(screenshot_path, context_prompt)
+            full_prompt = f"{quick_prompt}\n\n{context_prompt}"
             
-            # Show response in zenity
-            subprocess.run(
-                [sys.executable,
-                 os.path.join(os.path.dirname(__file__), "zenity_display.py"),
-                 llm_response]
-            )
+            llm_response = await self.llm_client.send_screenshot(screenshot_path, full_prompt)
             
-            # Clean up screenshot after processing
+            # Always show Quick Answer pop-up first
+            logger.info("Showing Quick Answer pop-up...")
+            self._show_quick_answer(llm_response, cursor_pos)
+            
+            # Clean up screenshot after pop-up processing
             try:
                 os.unlink(screenshot_path)
             except Exception as e:
@@ -151,19 +135,30 @@ class ScreenshotLLMDaemon:
             
         except Exception as e:
             logger.error(f"Error processing screenshot request: {e}")
-            # Fallback to zenity for errors
-            try:
-                error_response = (
-                    f"Error processing request: {str(e)}\n\n"
-                    "Please check your configuration and try again."
-                )
-                subprocess.run(
-                    [sys.executable,
-                     os.path.join(os.path.dirname(__file__), "zenity_display.py"),
-                     error_response]
-                )
-            except Exception as fallback_error:
-                logger.error(f"Failed to show error via fallback: {fallback_error}")
+            cursor_pos = get_cursor_position() # Get cursor pos again for error
+            error_response = (
+                f"Error: {str(e)}\n\n"
+                "Please check logs for details."
+            )
+            self._show_quick_answer(error_response, cursor_pos)
+
+    def _show_quick_answer(self, response_text: str, cursor_pos: tuple):
+        """Launch the GTK Quick Answer window."""
+        try:
+            logger.info("Launching Quick Answer window...")
+            quick_answer_script = os.path.join(lib_path, "quick_answer_window.py")
+            
+            subprocess.run([
+                sys.executable,
+                quick_answer_script,
+                response_text,
+                f"--x={cursor_pos[0]}",
+                f"--y={cursor_pos[1]}",
+                f"--config-dir={self.config_dir}"
+            ], check=True)
+            
+        except Exception as e:
+            logger.error(f"Failed to launch Quick Answer window: {e}")
     
     async def start(self):
         """Start the daemon"""
