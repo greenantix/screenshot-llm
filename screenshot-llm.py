@@ -23,12 +23,7 @@ from mouse_listener import MouseListener
 from screenshot import ScreenshotCapture
 from context_detector import ContextDetector
 from llm_client import LLMClient
-try:
-    from command_interface import show_response_gui
-    GUI_AVAILABLE = True
-except ImportError:
-    from simple_interface import show_response_simple as show_response_gui
-    GUI_AVAILABLE = False
+from ipc_handler import IPCManager
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +37,8 @@ class ScreenshotLLMDaemon:
         self.screenshot_capture = ScreenshotCapture()
         self.context_detector = ContextDetector()
         self.llm_client = LLMClient()
+        self.ipc_manager = IPCManager(config_dir)
+        self.ipc_client = None
         
         # Setup logging
         self._setup_logging()
@@ -69,6 +66,10 @@ class ScreenshotLLMDaemon:
         try:
             logger.info("Mouse button 9 pressed - processing screenshot request")
             
+            # Initialize IPC client if needed
+            if not self.ipc_client:
+                self.ipc_client = self.ipc_manager.create_client()
+            
             # Capture screenshot
             logger.info("Capturing screenshot...")
             screenshot_path = self.screenshot_capture.capture_screen()
@@ -76,32 +77,32 @@ class ScreenshotLLMDaemon:
             
             # Detect context
             logger.info("Detecting application context...")
-            context_prompt = self.context_detector.build_context_prompt()
-            logger.info(f"Context: {context_prompt}")
+            context_data = self.context_detector.get_active_window_info()
+            logger.info(f"Context: {context_data}")
             
-            # Send to LLM
-            logger.info("Sending to LLM...")
-            llm_response = await self.llm_client.send_screenshot(screenshot_path, context_prompt)
-            logger.info("Received LLM response")
+            # Send screenshot to GUI via IPC
+            logger.info("Sending screenshot to GUI...")
+            success = await self.ipc_client.send_screenshot(screenshot_path, context_data)
             
-            # Show response in GUI
-            logger.info("Displaying response...")
-            subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "zenity_display.py"), llm_response])
+            if not success:
+                logger.warning("Failed to send screenshot via IPC, falling back to direct processing")
+                # Fallback: process directly and show in zenity
+                context_prompt = self.context_detector.build_context_prompt()
+                llm_response = await self.llm_client.send_screenshot(screenshot_path, context_prompt)
+                subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "zenity_display.py"), llm_response])
+            else:
+                logger.info("Screenshot sent to GUI successfully")
             
-            # Cleanup screenshot if configured
-            config = self.llm_client.config
-            if config.get('auto_delete_screenshots', True):
-                try:
-                    os.remove(screenshot_path)
-                    logger.info("Screenshot deleted")
-                except Exception as e:
-                    logger.warning(f"Could not delete screenshot: {e}")
+            # Note: Don't delete screenshot immediately - let GUI handle it or delete after processing
             
         except Exception as e:
             logger.error(f"Error processing screenshot request: {e}")
-            # Show error in GUI
-            error_response = f"Error processing request: {str(e)}\n\nPlease check your configuration and try again."
-            show_response_gui(error_response)
+            # Fallback to zenity for errors
+            try:
+                error_response = f"Error processing request: {str(e)}\n\nPlease check your configuration and try again."
+                subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "zenity_display.py"), error_response])
+            except Exception as fallback_error:
+                logger.error(f"Failed to show error via fallback: {fallback_error}")
     
     async def start(self):
         """Start the daemon"""
