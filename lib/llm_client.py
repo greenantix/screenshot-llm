@@ -247,10 +247,44 @@ class LLMClient:
             })
         
         for msg in messages:
-            formatted_messages.append({
-                "role": msg["role"],
-                "content": msg.get("content", "")
-            })
+            content = msg.get("content", "")
+            
+            if isinstance(content, list):
+                # Handle multipart content (text + images)
+                formatted_content = []
+                
+                for part in content:
+                    if part.get("type") == "text":
+                        formatted_content.append({
+                            "type": "text",
+                            "text": part["text"]
+                        })
+                    elif part.get("type") == "image_path":
+                        # Convert image_path to base64 for OpenAI
+                        try:
+                            image_data = self._encode_image(part["image_path"])
+                            mime_type = self._get_image_mime_type(part["image_path"])
+                            formatted_content.append({
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{mime_type};base64,{image_data}"
+                                }
+                            })
+                        except Exception as e:
+                            logger.error(f"Failed to process image: {e}")
+                            # Skip the image part if processing fails
+                            continue
+                
+                formatted_messages.append({
+                    "role": msg["role"],
+                    "content": formatted_content
+                })
+            else:
+                # Simple text content
+                formatted_messages.append({
+                    "role": msg["role"],
+                    "content": content
+                })
         
         response = await self.client.chat.completions.create(
             model=self.config['model'],

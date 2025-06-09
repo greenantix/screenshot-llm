@@ -22,6 +22,7 @@ from .logger import get_logger, log_exception
 from .tab_manager import TabManager
 from .llm_client import LLMClient
 from .ipc_handler import IPCManager
+import subprocess
 
 logger = get_logger(__name__)
 
@@ -83,44 +84,159 @@ class PersistentChatWindow(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_window_close)
     
     def _setup_styles(self):
-        """Configure ttk styles for the GUI"""
+        """Configure ttk styles with Pop!_OS inspired theme"""
         style = ttk.Style()
         
-        # Configure styles for all widgets
-        style.configure("Custom.TFrame", background=self.bg_color)
+        # Define additional theme colors
+        self.button_hover = "#5cc7d5"  # Lighter accent for hover
+        self.button_pressed = "#3da4b0"  # Darker accent for pressed
+        self.border_color = "#4a4a4a"  # Subtle border color
+        self.text_secondary = "#b0b0b0"  # Secondary text color
         
+        # Configure Frame styles
+        style.configure("Custom.TFrame", 
+                       background=self.bg_color,
+                       relief="flat",
+                       borderwidth=0)
+        
+        style.configure("Surface.TFrame",
+                       background=self.surface_color,
+                       relief="flat", 
+                       borderwidth=1)
+        
+        # Configure Button styles with modern look
         style.configure("Custom.TButton",
                        background=self.accent_color,
                        foreground=self.fg_color,
-                       padding=5)
+                       borderwidth=0,
+                       focuscolor="none",
+                       relief="flat",
+                       padding=(12, 6),
+                       font=("SF Pro Display", 10, "normal"))
         
         style.map("Custom.TButton",
-                 background=[("active", self.accent_color),
-                           ("pressed", self.accent_color)])
+                 background=[("active", self.button_hover),
+                           ("pressed", self.button_pressed),
+                           ("disabled", self.surface_color)],
+                 foreground=[("disabled", self.text_secondary)])
         
+        # Secondary button style
+        style.configure("Secondary.TButton",
+                       background=self.surface_color,
+                       foreground=self.fg_color,
+                       borderwidth=1,
+                       relief="solid",
+                       focuscolor="none",
+                       padding=(12, 6),
+                       font=("SF Pro Display", 10, "normal"))
+        
+        style.map("Secondary.TButton",
+                 background=[("active", self.border_color),
+                           ("pressed", self.bg_color)],
+                 bordercolor=[("active", self.accent_color)])
+        
+        # Configure Entry styles
         style.configure("Custom.TEntry",
                        fieldbackground=self.surface_color,
                        foreground=self.fg_color,
+                       bordercolor=self.border_color,
+                       lightcolor=self.surface_color,
+                       darkcolor=self.surface_color,
+                       borderwidth=1,
                        insertcolor=self.accent_color,
-                       padding=5)
+                       relief="solid",
+                       padding=(8, 6),
+                       font=("SF Pro Display", 10, "normal"))
         
+        style.map("Custom.TEntry",
+                 bordercolor=[("focus", self.accent_color)],
+                 lightcolor=[("focus", self.accent_color)],
+                 darkcolor=[("focus", self.accent_color)])
+        
+        # Configure Notebook styles
         style.configure("Custom.TNotebook",
                        background=self.bg_color,
+                       borderwidth=0,
                        tabmargins=[0, 5, 0, 0])
                        
         style.configure("Custom.TNotebook.Tab",
                        background=self.surface_color,
                        foreground=self.fg_color,
-                       padding=[10, 2])
+                       borderwidth=1,
+                       relief="solid",
+                       padding=[12, 8],
+                       font=("SF Pro Display", 10, "normal"))
         
         style.map("Custom.TNotebook.Tab",
-                 background=[("selected", self.accent_color)],
-                 foreground=[("selected", self.fg_color)])
+                 background=[("selected", self.accent_color),
+                           ("active", self.button_hover)],
+                 foreground=[("selected", self.fg_color)],
+                 bordercolor=[("selected", self.accent_color)])
         
+        # Configure Label styles
         style.configure("Custom.TLabel",
                        background=self.bg_color,
                        foreground=self.fg_color,
+                       font=("SF Pro Display", 10, "normal"),
                        padding=2)
+        
+        style.configure("Heading.TLabel",
+                       background=self.bg_color,
+                       foreground=self.fg_color,
+                       font=("SF Pro Display", 12, "bold"),
+                       padding=4)
+        
+        style.configure("Secondary.TLabel",
+                       background=self.bg_color,
+                       foreground=self.text_secondary,
+                       font=("SF Pro Display", 9, "normal"),
+                       padding=2)
+        
+        # Configure Scrollbar styles
+        style.configure("Custom.Vertical.TScrollbar",
+                       background=self.surface_color,
+                       troughcolor=self.bg_color,
+                       borderwidth=0,
+                       arrowcolor=self.fg_color,
+                       darkcolor=self.surface_color,
+                       lightcolor=self.surface_color)
+        
+        style.map("Custom.Vertical.TScrollbar",
+                 background=[("active", self.accent_color)])
+        
+        # Configure Separator styles
+        style.configure("Custom.TSeparator",
+                       background=self.border_color)
+        
+        # Configure Progressbar styles
+        style.configure("Custom.Horizontal.TProgressbar",
+                       background=self.accent_color,
+                       troughcolor=self.surface_color,
+                       borderwidth=0,
+                       lightcolor=self.accent_color,
+                       darkcolor=self.accent_color)
+    
+    def _copy_to_clipboard(self, text: str):
+        """Copy text to system clipboard"""
+        try:
+            # Use wl-copy for Wayland or xclip for X11
+            if os.environ.get('WAYLAND_DISPLAY'):
+                subprocess.run(['wl-copy'], input=text.encode(), timeout=5, check=True)
+            else:
+                subprocess.run(['xclip', '-selection', 'clipboard'], input=text.encode(), timeout=5, check=True)
+            
+            self.status_bar.configure(text="Code copied to clipboard")
+            logger.info("Code copied to clipboard")
+            
+            # Reset status after 2 seconds
+            self.after(2000, lambda: self.status_bar.configure(text="Ready"))
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to copy to clipboard: {e}")
+            self.status_bar.configure(text="Failed to copy - clipboard tool not available")
+        except Exception as e:
+            logger.error(f"Error copying to clipboard: {e}")
+            self.status_bar.configure(text="Error copying to clipboard")
     
     def _create_ui(self):
         """Create the user interface"""
@@ -207,7 +323,7 @@ class PersistentChatWindow(tk.Tk):
             self.lift()
             
             # Process screenshot in current tab
-            self._process_screenshot(screenshot_data, context)
+            self._process_screenshot(screenshot_data, context, image_path)
             
             # Update status
             self.status_bar.configure(text="Processing screenshot...")
@@ -225,7 +341,7 @@ class PersistentChatWindow(tk.Tk):
         """Handle hide window request"""
         self.withdraw()
     
-    def _process_screenshot(self, screenshot_data: bytes, context: Dict):
+    def _process_screenshot(self, screenshot_data: bytes, context: Dict, image_path: str = None):
         """Process and display a new screenshot"""
         try:
             current_tab = self.tab_manager.get_current_tab()
@@ -269,12 +385,9 @@ class PersistentChatWindow(tk.Tk):
                     current_tab.chat_display.configure(state=tk.DISABLED)
                     current_tab.chat_display.see(tk.END)
                     
-                    # Add to conversation
-                    current_tab.conversation_manager.add_message(
-                        "system",
-                        f"Screenshot: {context_str}",
-                        {"screenshot": {"data": screenshot_data, "context": context}}
-                    )
+                    # Add to conversation with image path if available
+                    if image_path:
+                        current_tab.conversation_manager.add_screenshot_message(image_path, context)
                     
                     # Get LLM response
                     self._get_llm_response_for_screenshot(current_tab, context)
@@ -364,7 +477,7 @@ class PersistentChatWindow(tk.Tk):
             tab.chat_display.insert(tk.END, f"[{timestamp}] ", "timestamp")
             tab.chat_display.insert(tk.END, "Assistant: ", "bold")
             
-            # Parse and display markdown response
+            # Parse and display markdown response with copy buttons
             self._parse_markdown(response, tab.chat_display)
             
             tab.chat_display.insert(tk.END, "\n\n")
@@ -372,7 +485,7 @@ class PersistentChatWindow(tk.Tk):
             tab.chat_display.see(tk.END)
             
             # Add to conversation
-            tab.conversation_manager.add_message("assistant", response)
+            tab.conversation_manager.add_assistant_message(response)
             
             # Update status
             self.status_bar.configure(text="Analysis complete")
@@ -381,31 +494,198 @@ class PersistentChatWindow(tk.Tk):
             log_exception(e, "Failed to display LLM response")
     
     def _parse_markdown(self, text: str, text_widget: tk.Text):
-        """Parse and display markdown formatted text"""
+        """Parse and display markdown formatted text with copy code buttons"""
+        import re
+        
+        # Configure text tags for styling
+        text_widget.tag_configure("header1", font=("SF Pro Display", 14, "bold"), foreground=self.accent_color)
+        text_widget.tag_configure("header2", font=("SF Pro Display", 12, "bold"), foreground=self.accent_color)
+        text_widget.tag_configure("header3", font=("SF Pro Display", 11, "bold"), foreground=self.accent_color)
+        text_widget.tag_configure("code", font=("SF Mono", 10), background=self.surface_color, foreground="#f8f8f2")
+        text_widget.tag_configure("code_block", font=("SF Mono", 10), background=self.surface_color, foreground="#f8f8f2")
+        text_widget.tag_configure("bold", font=("SF Pro Display", 10, "bold"))
+        text_widget.tag_configure("italic", font=("SF Pro Display", 10, "italic"))
+        
+        # Split text into parts, handling code blocks specially
+        parts = re.split(r'(```[\w]*\n.*?\n```)', text, flags=re.DOTALL)
+        
+        for part in parts:
+            if part.startswith('```') and part.endswith('```'):
+                # This is a code block
+                self._insert_code_block(text_widget, part)
+            else:
+                # Regular markdown text
+                self._parse_regular_markdown(text_widget, part)
+    
+    def _insert_code_block(self, text_widget: tk.Text, code_block: str):
+        """Insert a code block with syntax highlighting and copy button"""
+        lines = code_block.strip().split('\n')
+        if len(lines) < 2:
+            return
+        
+        # Extract language and code
+        first_line = lines[0]
+        language = first_line[3:].strip() if len(first_line) > 3 else "text"
+        code_content = '\n'.join(lines[1:-1])  # Remove ``` lines
+        
+        if not code_content.strip():
+            return
+        
+        # Insert code block header with language and copy button
+        text_widget.insert(tk.END, f"\n{language.title()} Code:\n", "bold")
+        
+        # Apply syntax highlighting
+        code_start = text_widget.index(tk.END)
+        self._insert_highlighted_code(text_widget, code_content, language)
+        code_end = text_widget.index(tk.END)
+        
+        # Create copy button frame
+        button_frame = tk.Frame(text_widget, bg=self.bg_color)
+        copy_button = ttk.Button(
+            button_frame,
+            text="📋 Copy",
+            style="Secondary.TButton",
+            command=lambda: self._copy_to_clipboard(code_content)
+        )
+        copy_button.pack(pady=2)
+        
+        # Insert button as window in text widget
+        text_widget.insert(tk.END, "\n")
+        text_widget.window_create(tk.END, window=button_frame)
+        text_widget.insert(tk.END, "\n\n")
+        
+        # Add border around code block
+        text_widget.tag_add("code_block_border", code_start, code_end)
+        text_widget.tag_configure("code_block_border", 
+                                 relief="solid", 
+                                 borderwidth=1,
+                                 bgstipple="gray50")
+    
+    def _insert_highlighted_code(self, text_widget: tk.Text, code: str, language: str):
+        """Insert code with syntax highlighting"""
+        try:
+            from pygments import highlight
+            from pygments.lexers import get_lexer_by_name, guess_lexer
+            from pygments.formatters import TerminalFormatter
+            from pygments.token import Token
+            from pygments.util import ClassNotFound
+            
+            # Map language names to pygments lexer names
+            language_map = {
+                'js': 'javascript',
+                'ts': 'typescript', 
+                'py': 'python',
+                'sh': 'bash',
+                'shell': 'bash',
+                'yml': 'yaml',
+                'dockerfile': 'docker'
+            }
+            
+            # Get the lexer
+            try:
+                lexer_name = language_map.get(language.lower(), language.lower())
+                lexer = get_lexer_by_name(lexer_name)
+            except ClassNotFound:
+                try:
+                    # Try to guess the lexer
+                    lexer = guess_lexer(code)
+                except:
+                    # Fallback to plain text
+                    text_widget.insert(tk.END, code, "code_block")
+                    return
+            
+            # Define color scheme for dark theme
+            token_colors = {
+                Token.Keyword: "#ff79c6",           # Pink
+                Token.String: "#f1fa8c",            # Yellow
+                Token.Comment: "#6272a4",           # Blue-gray
+                Token.Number: "#bd93f9",            # Purple
+                Token.Operator: "#ff79c6",          # Pink
+                Token.Name.Function: "#50fa7b",     # Green
+                Token.Name.Class: "#8be9fd",        # Cyan
+                Token.Name.Variable: "#f8f8f2",     # White
+                Token.Name.Builtin: "#8be9fd",      # Cyan
+                Token.Literal: "#f1fa8c",           # Yellow
+            }
+            
+            # Tokenize the code
+            tokens = list(lexer.get_tokens(code))
+            
+            for token_type, token_value in tokens:
+                # Find the most specific color for this token
+                color = None
+                for token_class, token_color in token_colors.items():
+                    if token_type in token_class:
+                        color = token_color
+                        break
+                
+                # Create unique tag for this token type
+                tag_name = f"token_{str(token_type).replace('.', '_')}"
+                if color:
+                    text_widget.tag_configure(tag_name, 
+                                             foreground=color,
+                                             background=self.surface_color,
+                                             font=("SF Mono", 10))
+                    text_widget.insert(tk.END, token_value, tag_name)
+                else:
+                    text_widget.insert(tk.END, token_value, "code_block")
+                    
+        except Exception as e:
+            # Fallback to plain code block if highlighting fails
+            logger.warning(f"Syntax highlighting failed: {e}")
+            text_widget.insert(tk.END, code, "code_block")
+    
+    def _parse_regular_markdown(self, text_widget: tk.Text, text: str):
+        """Parse regular markdown text (non-code blocks)"""
         lines = text.split("\n")
         
         for line in lines:
             if line.startswith("# "):
-                text_widget.insert(tk.END, line[2:], "header1")
+                text_widget.insert(tk.END, line[2:] + "\n", "header1")
             elif line.startswith("## "):
-                text_widget.insert(tk.END, line[3:], "header2")
+                text_widget.insert(tk.END, line[3:] + "\n", "header2")
             elif line.startswith("### "):
-                text_widget.insert(tk.END, line[4:], "header3")
-            elif line.startswith("```"):
-                # Code block (simplified)
-                text_widget.insert(tk.END, line, "code_block")
+                text_widget.insert(tk.END, line[4:] + "\n", "header3")
             elif "`" in line:
-                # Inline code (simplified)
-                parts = line.split("`")
-                for i, part in enumerate(parts):
-                    if i % 2 == 0:
-                        text_widget.insert(tk.END, part)
-                    else:
-                        text_widget.insert(tk.END, part, "code")
+                # Handle inline code
+                self._parse_inline_code(text_widget, line)
+                text_widget.insert(tk.END, "\n")
             else:
-                text_widget.insert(tk.END, line)
-            
-            text_widget.insert(tk.END, "\n")
+                # Handle bold and italic
+                self._parse_text_formatting(text_widget, line)
+                text_widget.insert(tk.END, "\n")
+    
+    def _parse_inline_code(self, text_widget: tk.Text, line: str):
+        """Parse line with inline code (`code`)"""
+        import re
+        parts = re.split(r'(`[^`]+`)', line)
+        
+        for part in parts:
+            if part.startswith('`') and part.endswith('`'):
+                # Inline code
+                code_text = part[1:-1]  # Remove backticks
+                text_widget.insert(tk.END, code_text, "code")
+            else:
+                # Regular text
+                self._parse_text_formatting(text_widget, part)
+    
+    def _parse_text_formatting(self, text_widget: tk.Text, text: str):
+        """Parse bold and italic formatting"""
+        import re
+        
+        # Handle **bold** and *italic*
+        parts = re.split(r'(\*\*[^*]+\*\*|\*[^*]+\*)', text)
+        
+        for part in parts:
+            if part.startswith('**') and part.endswith('**'):
+                # Bold text
+                text_widget.insert(tk.END, part[2:-2], "bold")
+            elif part.startswith('*') and part.endswith('*'):
+                # Italic text
+                text_widget.insert(tk.END, part[1:-1], "italic")
+            else:
+                # Regular text
+                text_widget.insert(tk.END, part)
     
     def _show_full_image(self, image_data: bytes):
         """Display full-size image in a new window"""

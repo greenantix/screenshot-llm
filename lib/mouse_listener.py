@@ -60,9 +60,9 @@ class MouseListener:
             self.stop()
     
     def _find_mouse_device(self):
-        """Find a suitable mouse device with stricter filtering."""
+        """Find a suitable mouse device with robust scoring algorithm."""
         devices = [InputDevice(path) for path in evdev.list_devices()]
-        mouse_candidates = []
+        scored_candidates = []
 
         logger.debug("--- Scanning for Mouse Devices ---")
         for device in devices:
@@ -70,7 +70,7 @@ class MouseListener:
             device_name = device.name.lower()
             logger.debug(f"Checking device: {device.name} ({device.path})")
 
-            # --- Strict Filtering Criteria ---
+            # --- Basic Requirements ---
             # 1. Must have key/button events
             if ecodes.EV_KEY not in capabilities:
                 logger.debug("  -> Skipping: No EV_KEY capability.")
@@ -81,46 +81,96 @@ class MouseListener:
                 logger.debug("  -> Skipping: No EV_REL capability (not a mouse).")
                 continue
 
-            # 3. Must NOT be a keyboard
-            if any(keyword in device_name for keyword in ['keyboard', 'kbd', 'keypad']):
-                logger.debug("  -> Skipping: Name suggests it's a keyboard.")
-                continue
-
-            # 4. Must have the target button code
+            # 3. Must have the target button code
             keys = capabilities[ecodes.EV_KEY]
             if self.button_code not in keys:
                 logger.debug(f"  -> Skipping: Does not have target button {self.button_code}.")
                 continue
+
+            # --- Scoring Algorithm ---
+            score = 0
+            reasons = []
+
+            # Positive indicators - prioritize actual mice over composite devices
+            if "rival 3" in device_name and "keyboard" not in device_name:
+                score += 150
+                reasons.append("Rival 3 mouse (+150)")
+            elif "rival" in device_name and "keyboard" not in device_name:
+                score += 120
+                reasons.append("Rival series mouse (+120)")
+            elif "mouse" in device_name:
+                score += 100
+                reasons.append("has 'mouse' in name (+100)")
             
-            logger.debug("  -> Candidate passed initial filters.")
+            # Check for standard mouse buttons (strong positive indicator)
+            if ecodes.BTN_LEFT in keys and ecodes.BTN_RIGHT in keys:
+                score += 80
+                reasons.append("has left/right buttons (+80)")
+            elif ecodes.BTN_LEFT in keys or ecodes.BTN_RIGHT in keys:
+                score += 40
+                reasons.append("has basic mouse button (+40)")
+
+            # Middle button is also a good indicator
+            if ecodes.BTN_MIDDLE in keys:
+                score += 20
+                reasons.append("has middle button (+20)")
+
+            # Bonus for SteelSeries devices (user's hardware)
+            if "steelseries" in device_name:
+                score += 30
+                reasons.append("SteelSeries device (+30)")
             
-            mouse_candidates.append(device)
+            # Penalty for composite device names (like "Apex 7 TKL Mouse" which is part of keyboard)
+            if any(kb_name in device_name for kb_name in ["apex", "tkl"]):
+                score -= 50
+                reasons.append("composite keyboard device (-50)")
+
+            # Negative indicators (heavy penalties)
+            if any(keyword in device_name for keyword in ['keyboard', 'kbd', 'keypad']):
+                score -= 200
+                reasons.append("keyboard-related name (-200)")
+            
+            if "consumer control" in device_name:
+                score -= 150
+                reasons.append("consumer control device (-150)")
+
+            # Bonus for devices with more mouse-like button ranges
+            mouse_button_count = sum(1 for key in keys if 272 <= key <= 279)  # BTN_LEFT to BTN_TASK
+            if mouse_button_count >= 5:
+                score += 50
+                reasons.append(f"many mouse buttons ({mouse_button_count}) (+50)")
+            elif mouse_button_count >= 3:
+                score += 25
+                reasons.append(f"several mouse buttons ({mouse_button_count}) (+25)")
+
+            logger.debug(f"  -> Score: {score}, Reasons: {', '.join(reasons)}")
+            
+            if score > 0:  # Only consider devices with positive scores
+                scored_candidates.append((score, device, reasons))
+                logger.debug("  -> Added as candidate")
+            else:
+                logger.debug("  -> Rejected (negative score)")
 
         logger.debug("--- Finished Scanning ---")
 
-        if not mouse_candidates:
-            logger.error("No suitable mouse device found after strict filtering.")
+        if not scored_candidates:
+            logger.error("No suitable mouse device found after scoring.")
             logger.error("Please run 'test-mouse-devices.py' to debug.")
             return None
 
-        # --- Advanced Prioritization ---
-        # Prioritize the best match from the candidates
+        # Sort by score (highest first) and select the best
+        scored_candidates.sort(key=lambda x: x[0], reverse=True)
+        best_score, selected_device, best_reasons = scored_candidates[0]
         
-        # 1. Perfect match: "Rival 3" but not "Wireless"
-        for device in mouse_candidates:
-            if "rival 3" in device.name.lower() and "wireless" not in device.name.lower():
-                logger.info(f"Found ideal device: {device.name}")
-                return device
-
-        # 2. Fallback: Any "Rival" mouse
-        for device in mouse_candidates:
-            if "rival" in device.name.lower():
-                logger.info(f"Found fallback 'Rival' device: {device.name}")
-                return device
-                
-        # 3. Generic fallback: First device in the list
-        selected_device = mouse_candidates[0]
         logger.info(f"Selected mouse device: {selected_device.name} at {selected_device.path}")
+        logger.info(f"Selection score: {best_score}, Reasons: {', '.join(best_reasons)}")
+        
+        # Log other candidates for debugging
+        if len(scored_candidates) > 1:
+            logger.debug("Other candidates:")
+            for score, device, reasons in scored_candidates[1:4]:  # Show top 3 alternatives
+                logger.debug(f"  {device.name} (score: {score})")
+        
         return selected_device
     
     def stop(self):

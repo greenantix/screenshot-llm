@@ -15,7 +15,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 class ConversationManager:
-    def __init__(self, config_dir: str = "~/.local/share/screenshot-llm"):
+    def __init__(self, config_dir: str = "~/.local/share/screenshot-llm", config: Dict = None):
         self.config_dir = os.path.expanduser(config_dir)
         self.conversations_dir = os.path.join(self.config_dir, "conversations")
         os.makedirs(self.conversations_dir, exist_ok=True)
@@ -23,7 +23,10 @@ class ConversationManager:
         self.messages: List[Dict[str, Any]] = []
         self.current_context = {}
         self.conversation_id = None
-        self.max_api_messages = 20  # Limit messages sent to API to control costs
+        
+        # Get max_api_messages from config or use default
+        conv_config = config.get("conversation", {}) if config else {}
+        self.max_api_messages = conv_config.get("max_api_messages", 10)
         
     def create_new_conversation(self) -> str:
         """Create a new conversation with unique ID"""

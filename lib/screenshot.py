@@ -59,7 +59,7 @@ class ScreenshotCapture:
         """Check if running under Wayland"""
         return 'WAYLAND_DISPLAY' in os.environ
     
-    def capture_screen(self, monitor: int = None) -> str:
+    def capture_screen(self, monitor: int = None, active_window: bool = False) -> str:
         """Capture a screenshot and return the file path"""
         # Generate filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -72,13 +72,13 @@ class ScreenshotCapture:
         success = False
         
         if self._is_wayland():
-            success = self._capture_wayland(filepath, monitor)
+            success = self._capture_wayland(filepath, monitor, active_window)
         else:
-            success = self._capture_x11(filepath, monitor)
+            success = self._capture_x11(filepath, monitor, active_window)
         
         if not success:
             # Fallback to generic tools
-            success = self._capture_generic(filepath)
+            success = self._capture_generic(filepath, active_window)
         
         if success and os.path.exists(filepath):
             logger.info(f"Screenshot captured: {filepath}")
@@ -86,12 +86,30 @@ class ScreenshotCapture:
         else:
             raise Exception("Failed to capture screenshot with any available tool")
     
-    def _capture_wayland(self, filepath: str, monitor: int = None) -> bool:
+    def _capture_wayland(self, filepath: str, monitor: int = None, active_window: bool = False) -> bool:
         """Capture screenshot on Wayland"""
         if 'grim' in self.screenshot_tools:
             try:
                 cmd = ['grim']
-                if monitor is not None:
+                
+                if active_window:
+                    # Try to capture just the active window using slurp
+                    if self._command_exists('slurp'):
+                        try:
+                            # Get active window geometry
+                            geometry_result = subprocess.run(
+                                ['slurp', '-f', '%x %y %w %h'], 
+                                capture_output=True, text=True, input='\n'
+                            )
+                            if geometry_result.returncode == 0:
+                                x, y, w, h = geometry_result.stdout.strip().split()
+                                cmd.extend(['-g', f"{w}x{h}+{x}+{y}"])
+                        except Exception as e:
+                            logger.warning(f"Failed to get window geometry with slurp: {e}")
+                            # Fall back to trying the active monitor
+                            active_window = False
+                
+                if not active_window and monitor is not None:
                     # Get output info with wlr-randr if available
                     if 'wlr-randr' in self.screenshot_tools:
                         try:
@@ -102,6 +120,24 @@ class ScreenshotCapture:
                                 cmd.extend(['-o', outputs[monitor]])
                         except Exception as e:
                             logger.warning(f"Failed to get monitor info: {e}")
+                elif not active_window and monitor is not None:
+                    # For focused monitor mode, try to capture the monitor with the cursor
+                    try:
+                        # Use slurp to get screen info and select the monitor with cursor
+                        if self._command_exists('slurp'):
+                            # Get cursor position and determine which monitor
+                            cursor_result = subprocess.run(
+                                ['slurp', '-f', '%o'], 
+                                capture_output=True, text=True, timeout=1
+                            )
+                            if cursor_result.returncode == 0:
+                                output_name = cursor_result.stdout.strip()
+                                if output_name:
+                                    cmd.extend(['-o', output_name])
+                                    logger.debug(f"Capturing monitor with cursor: {output_name}")
+                    except Exception as e:
+                        logger.warning(f"Failed to detect focused monitor: {e}")
+                        # Just capture all monitors as fallback
                 
                 cmd.append(filepath)
                 subprocess.run(cmd, check=True)
@@ -112,7 +148,7 @@ class ScreenshotCapture:
         
         return False
     
-    def _capture_x11(self, filepath: str, monitor: int = None) -> bool:
+    def _capture_x11(self, filepath: str, monitor: int = None, active_window: bool = False) -> bool:
         """Capture screenshot on X11"""
         # Try maim first (preferred)
         if 'maim' in self.screenshot_tools:
@@ -159,7 +195,7 @@ class ScreenshotCapture:
         
         return False
     
-    def _capture_generic(self, filepath: str) -> bool:
+    def _capture_generic(self, filepath: str, active_window: bool = False) -> bool:
         """Capture using generic desktop tools"""
         # Try gnome-screenshot
         if 'gnome-screenshot' in self.screenshot_tools:

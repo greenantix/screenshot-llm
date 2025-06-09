@@ -6,7 +6,7 @@ Tab manager for Screenshot LLM Assistant
 import tkinter as tk
 from tkinter import ttk
 from typing import Dict, Optional
-from .conversation_manager import ConversationManager
+from .conversation import ConversationManager
 from .logger import get_logger, log_exception
 
 logger = get_logger(__name__)
@@ -14,15 +14,16 @@ logger = get_logger(__name__)
 class ChatTab:
     """Represents a single chat tab"""
     
-    def __init__(self, parent: ttk.Notebook, tab_id: str):
+    def __init__(self, parent: ttk.Notebook, tab_id: str, config: Dict = None):
         self.tab_id = tab_id
         self.parent = parent
+        self.config = config
         
         # Create main frame
         self.frame = ttk.Frame(parent, style="Custom.TFrame")
         
-        # Initialize conversation manager
-        self.conversation_manager = ConversationManager()
+        # Initialize conversation manager with config
+        self.conversation_manager = ConversationManager(config=config)
         
         # Create UI components
         self._create_ui()
@@ -193,12 +194,15 @@ class ChatTab:
             self.chat_display.insert(tk.END, f"[{timestamp}] ", "timestamp")
             self.chat_display.insert(tk.END, f"{sender}: ", "bold")
             
-            # Add content (this could be enhanced with markdown parsing)
+            # Add content - simplified for now
             self.chat_display.insert(tk.END, content)
             self.chat_display.insert(tk.END, "\n\n")
             
             # Add to conversation
-            self.conversation_manager.add_message(role, content)
+            if role == "user":
+                self.conversation_manager.add_user_message(content)
+            elif role == "assistant":
+                self.conversation_manager.add_assistant_message(content)
             
             # Disable editing and scroll to bottom
             self.chat_display.configure(state=tk.DISABLED)
@@ -232,8 +236,8 @@ class TabManager(ttk.Notebook):
             self.tab_counter += 1
             tab_id = str(self.tab_counter)
             
-            # Create new tab
-            tab = ChatTab(self, tab_id)
+            # Create new tab with config
+            tab = ChatTab(self, tab_id, self.config)
             self.tabs[tab_id] = tab
             
             # Select the new tab

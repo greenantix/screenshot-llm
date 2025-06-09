@@ -75,33 +75,62 @@ try:
                 print(f"   Type hints: {', '.join(device_type_hints)}")
     
     def test_mouse_listener():
-        """Test the mouse listener detection logic"""
+        """Test the mouse listener detection logic with detailed scoring"""
         print("\n🔍 Testing Mouse Listener Detection:")
         print("=" * 60)
         
         from mouse_listener import MouseListener
+        import logging
+        
+        # Enable debug logging to see scoring details
+        logging.getLogger('mouse_listener').setLevel(logging.DEBUG)
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+        logging.getLogger('mouse_listener').addHandler(handler)
         
         # Create listener but don't start it
         listener = MouseListener(button_code=276)
         
+        print("\n📊 Running device detection with scoring algorithm...")
+        print("-" * 50)
+        
         # Test device finding
         device = listener._find_mouse_device()
         
+        print("-" * 50)
+        
         if device:
-            print(f"✅ Selected device: {device.name}")
-            print(f"   Path: {device.path}")
+            print(f"🎯 FINAL SELECTION: {device.name}")
+            print(f"   📁 Path: {device.path}")
             
             # Check if it has the target button
             capabilities = device.capabilities()
             if ecodes.EV_KEY in capabilities:
                 keys = capabilities[ecodes.EV_KEY]
-                if 9 in keys or 272 in keys:  # Button 9 can be code 9 or 272
-                    print(f"   ✅ Has button 9 (code 272)")
+                if 276 in keys:  # Button 9 (code 276)
+                    print(f"   ✅ Has target button 9 (code 276)")
                 else:
-                    print(f"   ❌ Does not have button 9")
-                    print(f"   Available buttons: {[k for k in keys if k >= 272 and k <= 279]}")
+                    print(f"   ❌ Does not have target button 9 (code 276)")
+                    print(f"   Available mouse buttons: {[k for k in keys if k >= 272 and k <= 279]}")
+                
+                # Show all mouse buttons for reference
+                mouse_buttons = []
+                button_names = {
+                    272: "BTN_LEFT", 273: "BTN_RIGHT", 274: "BTN_MIDDLE",
+                    275: "BTN_SIDE", 276: "BTN_EXTRA", 277: "BTN_FORWARD",
+                    278: "BTN_BACK", 279: "BTN_TASK"
+                }
+                for code in keys:
+                    if 272 <= code <= 279:
+                        name = button_names.get(code, f"BTN_{code}")
+                        mouse_buttons.append(f"{name}({code})")
+                
+                if mouse_buttons:
+                    print(f"   🖱️  All mouse buttons: {', '.join(mouse_buttons)}")
         else:
             print("❌ No suitable device found")
+            print("\n💡 Try running with sudo if no devices are detected")
+            print("   or check that your mouse is connected.")
     
     def main():
         print("🖱️  Screenshot LLM Assistant - Mouse Device Tester")

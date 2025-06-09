@@ -89,8 +89,21 @@ class ScreenshotLLMDaemon:
             
             # Capture screenshot first - we'll need it either way
             logger.info("Capturing screenshot...")
-            screenshot_path = self.screenshot_capture.capture_screen()
-            logger.info(f"Screenshot saved to: {screenshot_path}")
+            
+            # Get screenshot mode from config
+            screenshot_mode = self.config.get("advanced", {}).get("screenshot_mode", "all_monitors")
+            
+            if screenshot_mode == "active_window":
+                screenshot_path = self.screenshot_capture.capture_screen(active_window=True)
+                logger.info(f"Active window screenshot saved to: {screenshot_path}")
+            elif screenshot_mode == "focused_monitor":
+                # For focused monitor, we'll modify grim to capture current monitor
+                screenshot_path = self.screenshot_capture.capture_screen(monitor=0)  # Will be handled by focused output logic
+                logger.info(f"Focused monitor screenshot saved to: {screenshot_path}")
+            else:
+                # Default: all monitors
+                screenshot_path = self.screenshot_capture.capture_screen()
+                logger.info(f"Full screenshot saved to: {screenshot_path}")
             
             # Detect context
             logger.info("Detecting application context...")
@@ -108,10 +121,7 @@ class ScreenshotLLMDaemon:
                     
                     if success:
                         logger.info("Screenshot sent to GUI successfully")
-                        # Return early - GUI will handle LLM processing
                         return
-                    else:
-                        logger.warning("Failed to send to GUI despite server being available")
                         
                 except Exception as ipc_error:
                     logger.error(f"IPC error: {ipc_error}")
