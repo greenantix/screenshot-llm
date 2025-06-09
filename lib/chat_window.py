@@ -388,6 +388,32 @@ class PersistentChatWindow:
         self.chat_display.insert(tk.END, "📸 Screenshot: ", 'screenshot_label')
         self.chat_display.insert(tk.END, f"{message['content']}\n", 'screenshot_message')
         
+        # Try to display thumbnail
+        image_path = message.get('image_path')
+        if image_path and os.path.exists(image_path):
+            try:
+                # Create thumbnail
+                thumbnail = self._create_thumbnail(image_path)
+                if thumbnail:
+                    # Insert image in text widget
+                    self.chat_display.image_create(tk.END, image=thumbnail)
+                    self.chat_display.insert(tk.END, " ")  # Space after image
+                    
+                    # Store reference to prevent garbage collection
+                    if not hasattr(self, '_image_refs'):
+                        self._image_refs = []
+                    self._image_refs.append(thumbnail)
+                    
+                    # Make image clickable to view full size
+                    self._make_image_clickable(image_path)
+                
+            except Exception as e:
+                logger.warning(f"Could not display thumbnail for {image_path}: {e}")
+                # Fallback: just show filename
+                self.chat_display.insert(tk.END, f"   [Image: {os.path.basename(image_path)}]", 'screenshot_message')
+        
+        self.chat_display.insert(tk.END, "\n")
+        
         # Context info
         context = message.get('context', {})
         if context:
@@ -401,6 +427,107 @@ class PersistentChatWindow:
         self.chat_display.config(state=tk.DISABLED)
         
         self._update_conversation_info()
+    
+    def _create_thumbnail(self, image_path: str, max_size: tuple = (200, 150)) -> Optional[ImageTk.PhotoImage]:
+        """Create thumbnail image for display in chat"""
+        try:
+            # Open and resize image
+            with Image.open(image_path) as img:
+                # Convert to RGB if necessary
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    img = img.convert('RGB')
+                
+                # Calculate thumbnail size maintaining aspect ratio
+                img.thumbnail(max_size, Image.Resampling.LANCZOS)
+                
+                # Convert to PhotoImage for Tkinter
+                return ImageTk.PhotoImage(img)
+                
+        except Exception as e:
+            logger.warning(f"Could not create thumbnail: {e}")
+            return None
+    
+    def _make_image_clickable(self, image_path: str):
+        """Make the last inserted image clickable to view full size"""
+        try:
+            # Get the current position in text widget
+            current_pos = self.chat_display.index(tk.INSERT)
+            
+            # Create a tag for this image
+            tag_name = f"image_{len(self._image_refs)}"
+            
+            # Apply tag to the image (approximate position)
+            # Note: This is a simplified approach - more complex tagging would be needed for precise click handling
+            def on_image_click(event):
+                self._show_full_image(image_path)
+            
+            # For now, we'll add a text link instead of making the actual image clickable
+            # This is because making embedded images clickable in Tkinter Text widget is complex
+            self.chat_display.insert(tk.END, " [View Full Size]", 'image_link')
+            
+            # Configure the link style
+            self.chat_display.tag_configure('image_link', 
+                                          foreground='#0078d4', 
+                                          underline=True)
+            
+            # Bind click event to the link
+            self.chat_display.tag_bind('image_link', '<Button-1>', 
+                                     lambda e: self._show_full_image(image_path))
+            
+        except Exception as e:
+            logger.warning(f"Could not make image clickable: {e}")
+    
+    def _show_full_image(self, image_path: str):
+        """Show full-size image in a new window"""
+        try:
+            if not os.path.exists(image_path):
+                messagebox.showerror("Image Error", "Image file not found")
+                return
+            
+            # Create new window for full-size image
+            image_window = tk.Toplevel(self.root)
+            image_window.title(f"Screenshot - {os.path.basename(image_path)}")
+            image_window.transient(self.root)
+            
+            # Load full-size image
+            with Image.open(image_path) as img:
+                # Get screen dimensions to limit window size
+                screen_width = self.root.winfo_screenwidth()
+                screen_height = self.root.winfo_screenheight()
+                
+                # Scale image if too large for screen (leave some margin)
+                max_width = screen_width - 100
+                max_height = screen_height - 200
+                
+                if img.width > max_width or img.height > max_height:
+                    img.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+                
+                # Convert to PhotoImage
+                photo = ImageTk.PhotoImage(img)
+                
+                # Create label to display image
+                label = tk.Label(image_window, image=photo)
+                label.pack(padx=10, pady=10)
+                
+                # Keep reference to prevent garbage collection
+                label.image = photo
+                
+                # Set window size and center it
+                image_window.geometry(f"{img.width + 20}x{img.height + 20}")
+                
+                # Center window on screen
+                x = (screen_width - img.width) // 2
+                y = (screen_height - img.height) // 2
+                image_window.geometry(f"+{x}+{y}")
+                
+                # Add close button
+                close_btn = tk.Button(image_window, text="Close", 
+                                    command=image_window.destroy)
+                close_btn.pack(pady=5)
+                
+        except Exception as e:
+            logger.error(f"Could not show full image: {e}")
+            messagebox.showerror("Image Error", f"Could not display image: {e}")
     
     def _display_assistant_message(self, message: Dict[str, Any]):
         """Display assistant message in chat"""
