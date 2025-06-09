@@ -1,0 +1,19 @@
+{
+  "id": "conversation_2025-06-09_12-25-27",
+  "created": "2025-06-09T12:25:46.215026",
+  "messages": [
+    {
+      "timestamp": "2025-06-09T12:25:46.211100",
+      "type": "user",
+      "content": "test",
+      "context": {}
+    },
+    {
+      "timestamp": "2025-06-09T12:25:46.215007",
+      "type": "assistant",
+      "content": "I received your message. Full conversation context will be implemented in the next phase.",
+      "context": {}
+    }
+  ],
+  "context": {}
+}

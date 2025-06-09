@@ -1,0 +1,36 @@
+{
+  "id": "conversation_2025-06-09_12-08-40",
+  "created": "2025-06-09T12:08:46.481370",
+  "messages": [
+    {
+      "timestamp": "2025-06-09T12:08:46.448378",
+      "type": "screenshot",
+      "content": "Screenshot: screenshot_1749488926.png",
+      "image_path": "/home/greenantix/.local/share/screenshot-llm/cache/screenshot_1749488926.png",
+      "context": {
+        "app_name": "jetbrains-idea-ce",
+        "window_title": "screenshot-llm \u2013 README.md",
+        "pid": "936307",
+        "working_dir": ""
+      }
+    },
+    {
+      "timestamp": "2025-06-09T12:08:46.481360",
+      "type": "screenshot",
+      "content": "Screenshot: screenshot_1749488926.png",
+      "image_path": "/home/greenantix/.local/share/screenshot-llm/cache/screenshot_1749488926.png",
+      "context": {
+        "app_name": "jetbrains-idea-ce",
+        "window_title": "screenshot-llm \u2013 README.md",
+        "pid": "936307",
+        "working_dir": ""
+      }
+    }
+  ],
+  "context": {
+    "app_name": "jetbrains-idea-ce",
+    "window_title": "screenshot-llm \u2013 README.md",
+    "pid": "936307",
+    "working_dir": ""
+  }
+}

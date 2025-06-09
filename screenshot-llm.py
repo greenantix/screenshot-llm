@@ -92,6 +92,8 @@ class ScreenshotLLMDaemon:
                 subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "zenity_display.py"), llm_response])
             else:
                 logger.info("Screenshot sent to GUI successfully")
+                # Return early - GUI will handle LLM processing
+                return
             
             # Note: Don't delete screenshot immediately - let GUI handle it or delete after processing
             

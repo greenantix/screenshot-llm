@@ -1,0 +1,47 @@
+{
+  "id": "conversation_2025-06-09_12-06-54",
+  "created": "2025-06-09T12:07:32.781237",
+  "messages": [
+    {
+      "timestamp": "2025-06-09T12:07:03.458473",
+      "type": "screenshot",
+      "content": "Screenshot: screenshot_1749488823.png",
+      "image_path": "/home/greenantix/.local/share/screenshot-llm/cache/screenshot_1749488823.png",
+      "context": {
+        "app_name": "jetbrains-idea-ce",
+        "window_title": "screenshot-llm \u2013 README.md",
+        "pid": "936307",
+        "working_dir": ""
+      }
+    },
+    {
+      "timestamp": "2025-06-09T12:07:03.492523",
+      "type": "screenshot",
+      "content": "Screenshot: screenshot_1749488823.png",
+      "image_path": "/home/greenantix/.local/share/screenshot-llm/cache/screenshot_1749488823.png",
+      "context": {
+        "app_name": "jetbrains-idea-ce",
+        "window_title": "screenshot-llm \u2013 README.md",
+        "pid": "936307",
+        "working_dir": ""
+      }
+    },
+    {
+      "timestamp": "2025-06-09T12:07:32.781192",
+      "type": "user",
+      "content": "test",
+      "context": {
+        "app_name": "jetbrains-idea-ce",
+        "window_title": "screenshot-llm \u2013 README.md",
+        "pid": "936307",
+        "working_dir": ""
+      }
+    }
+  ],
+  "context": {
+    "app_name": "jetbrains-idea-ce",
+    "window_title": "screenshot-llm \u2013 README.md",
+    "pid": "936307",
+    "working_dir": ""
+  }
+}

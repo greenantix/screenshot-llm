@@ -32,12 +32,17 @@ A powerful desktop assistant that captures screenshots and provides intelligent 
 
 1. Clone or download this repository to `~/.local/share/screenshot-llm`
 
-2. Install dependencies:
+2. Install system dependencies:
+```bash
+sudo apt install python3-tk grim wlr-randr maim scrot xdotool zenity
+```
+
+3. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Configure your API key:
+4. Configure your API key:
 ```bash
 # Edit the config file
 nano ~/.local/share/screenshot-llm/config/config.json

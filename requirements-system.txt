@@ -1,0 +1,17 @@
+# System packages required for Screenshot LLM Assistant v2.0
+
+# Essential Python GUI support
+python3-tk          # Tkinter GUI framework
+
+# Screenshot capture tools
+grim                # Wayland screenshot tool
+wlr-randr          # Wayland monitor detection
+maim               # X11 screenshot tool (alternative)
+scrot              # X11 screenshot tool (alternative)
+xdotool            # X11 window management
+
+# Optional GUI fallback
+zenity             # Simple GUI dialogs
+
+# Install command:
+# sudo apt install python3-tk grim wlr-randr maim scrot xdotool zenity

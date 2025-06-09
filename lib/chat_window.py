@@ -17,6 +17,14 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from PIL import Image, ImageTk
 import subprocess
+import re
+try:
+    from pygments import highlight
+    from pygments.lexers import get_lexer_by_name
+    from pygments.formatters import TerminalFormatter
+    PYGMENTS_AVAILABLE = True
+except ImportError:
+    PYGMENTS_AVAILABLE = False
 
 # Add lib directory to path
 lib_path = os.path.dirname(__file__)
@@ -46,6 +54,7 @@ class PersistentChatWindow:
         # State
         self.is_visible = True
         self.conversation_active = False
+        self.last_screenshot_time = 0  # Debounce mechanism
         
         # Create new conversation on startup
         self.conversation_manager.create_new_conversation()
@@ -53,15 +62,28 @@ class PersistentChatWindow:
     def create_window(self):
         """Create the main chat window"""
         self.root = tk.Tk()
-        self.root.title("Screenshot LLM Assistant - Interactive Chat")
-        self.root.geometry("900x700")
-        self.root.minsize(600, 400)
+        self.root.title("Screenshot LLM Assistant v2.0")
+        self.root.geometry("1000x750")
+        self.root.minsize(700, 500)
         
         # Configure style
         self._setup_styles()
         
+        # Set window properties for modern appearance
+        self.root.configure(bg=self.bg_color)
+        
+        # Try to set window icon (optional)
+        try:
+            # You could add an icon file here
+            pass
+        except:
+            pass
+        
         # Create menu bar
         self._create_menu()
+        
+        # Create header
+        self._create_header()
         
         # Create main layout
         self._create_layout()
@@ -78,20 +100,48 @@ class PersistentChatWindow:
         logger.info("Chat window created")
     
     def _setup_styles(self):
-        """Setup GUI styling"""
+        """Setup GUI styling with Pop!_OS theme"""
         style = ttk.Style()
         
-        # Configure colors
-        self.bg_color = "#2b2b2b"
-        self.fg_color = "#ffffff"
-        self.accent_color = "#0078d4"
-        self.user_color = "#dcf8c6"
-        self.assistant_color = "#f1f1f1"
-        self.screenshot_color = "#e3f2fd"
+        # Pop!_OS inspired color scheme
+        self.bg_color = "#2d2d2d"           # Pop!_OS dark background
+        self.surface_color = "#3c3c3c"      # Card/surface color
+        self.fg_color = "#f7f7f7"           # Main text
+        self.fg_secondary = "#cccccc"       # Secondary text
+        self.accent_color = "#48b9c7"       # Pop!_OS teal accent
+        self.accent_hover = "#5ebdcc"       # Lighter teal
+        self.user_color = "#48b9c7"         # User message teal
+        self.assistant_color = "#4a4a4a"    # Assistant message gray
+        self.screenshot_color = "#574c7a"   # Purple for screenshots
+        self.error_color = "#f85149"        # Red for errors
+        self.success_color = "#3fb950"      # Green for success
         
-        # Configure ttk styles
+        # Configure ttk styles with Pop!_OS theme
         style.theme_use('clam')
-        style.configure('Chat.TFrame', background=self.bg_color)
+        
+        # Main window styling
+        style.configure('Chat.TFrame', 
+                       background=self.bg_color,
+                       relief='flat')
+        
+        # Button styling
+        style.configure('Accent.TButton',
+                       background=self.accent_color,
+                       foreground='white',
+                       borderwidth=0,
+                       relief='flat',
+                       padding=(16, 8))
+        
+        style.map('Accent.TButton',
+                 background=[('active', self.accent_hover),
+                           ('pressed', '#3a9aa5')])
+        
+        # Entry styling
+        style.configure('Modern.TEntry',
+                       fieldbackground=self.surface_color,
+                       borderwidth=1,
+                       relief='solid',
+                       bordercolor=self.accent_color)
     
     def _create_menu(self):
         """Create menu bar"""
@@ -121,6 +171,48 @@ class PersistentChatWindow:
         view_menu.add_command(label="Minimize to Tray", command=self._minimize_to_tray)
         view_menu.add_command(label="Always on Top", command=self._toggle_always_on_top)
     
+    def _create_header(self):
+        """Create modern header with branding"""
+        header_frame = tk.Frame(self.root, bg=self.surface_color, height=60)
+        header_frame.pack(fill=tk.X, padx=0, pady=0)
+        header_frame.pack_propagate(False)
+        
+        # Left side - app info
+        left_frame = tk.Frame(header_frame, bg=self.surface_color)
+        left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=20, pady=12)
+        
+        # App title
+        title_label = tk.Label(left_frame, 
+                              text="Screenshot LLM Assistant", 
+                              font=('SF Pro Display', 14, 'bold'),
+                              fg=self.fg_color, 
+                              bg=self.surface_color)
+        title_label.pack(side=tk.LEFT)
+        
+        # Version badge
+        version_label = tk.Label(left_frame, 
+                               text="v2.0", 
+                               font=('SF Pro Display', 10),
+                               fg=self.accent_color, 
+                               bg=self.surface_color)
+        version_label.pack(side=tk.LEFT, padx=(8, 0))
+        
+        # Right side - status indicators
+        right_frame = tk.Frame(header_frame, bg=self.surface_color)
+        right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=20, pady=12)
+        
+        # Connection status
+        self.connection_status = tk.Label(right_frame, 
+                                        text="🟢 Connected", 
+                                        font=('SF Pro Display', 10),
+                                        fg=self.success_color, 
+                                        bg=self.surface_color)
+        self.connection_status.pack(side=tk.RIGHT)
+        
+        # Separator line
+        separator = tk.Frame(self.root, height=1, bg=self.accent_color)
+        separator.pack(fill=tk.X)
+    
     def _create_layout(self):
         """Create the main window layout"""
         # Main container
@@ -135,10 +227,17 @@ class PersistentChatWindow:
             chat_frame,
             wrap=tk.WORD,
             state=tk.DISABLED,
-            font=('Consolas', 10),
-            bg='#1e1e1e',
-            fg='#ffffff',
-            insertbackground='#ffffff'
+            font=('SF Pro Display', 11),  # Pop!_OS system font
+            bg=self.bg_color,
+            fg=self.fg_color,
+            insertbackground=self.accent_color,
+            selectbackground=self.accent_color,
+            selectforeground='white',
+            borderwidth=0,
+            highlightthickness=0,
+            relief='flat',
+            padx=16,
+            pady=12
         )
         self.chat_display.pack(fill=tk.BOTH, expand=True)
         
@@ -154,10 +253,18 @@ class PersistentChatWindow:
             input_frame,
             height=3,
             wrap=tk.WORD,
-            font=('Consolas', 10),
-            bg='#2d2d2d',
-            fg='#ffffff',
-            insertbackground='#ffffff'
+            font=('SF Pro Display', 11),
+            bg=self.surface_color,
+            fg=self.fg_color,
+            insertbackground=self.accent_color,
+            selectbackground=self.accent_color,
+            selectforeground='white',
+            borderwidth=1,
+            highlightthickness=1,
+            highlightcolor=self.accent_color,
+            relief='solid',
+            padx=12,
+            pady=8
         )
         self.input_entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         
@@ -165,7 +272,8 @@ class PersistentChatWindow:
         self.send_button = ttk.Button(
             input_frame,
             text="Send",
-            command=self._send_message
+            command=self._send_message,
+            style='Accent.TButton'
         )
         self.send_button.pack(side=tk.RIGHT)
         
@@ -191,16 +299,84 @@ class PersistentChatWindow:
         self._update_conversation_info()
     
     def _configure_text_tags(self):
-        """Configure text tags for message formatting"""
-        self.chat_display.tag_configure('timestamp', foreground='#888888', font=('Consolas', 8))
-        self.chat_display.tag_configure('user_label', foreground='#4CAF50', font=('Consolas', 10, 'bold'))
-        self.chat_display.tag_configure('assistant_label', foreground='#2196F3', font=('Consolas', 10, 'bold'))
-        self.chat_display.tag_configure('screenshot_label', foreground='#FF9800', font=('Consolas', 10, 'bold'))
-        self.chat_display.tag_configure('user_message', foreground='#ffffff', background='#2E7D32')
-        self.chat_display.tag_configure('assistant_message', foreground='#000000', background='#E3F2FD')
-        self.chat_display.tag_configure('screenshot_message', foreground='#000000', background='#FFF3E0')
-        self.chat_display.tag_configure('code', foreground='#ffffff', background='#424242', font=('Consolas', 9))
-        self.chat_display.tag_configure('error', foreground='#f44336')
+        """Configure text tags for message formatting with Pop!_OS styling"""
+        # Timestamp styling
+        self.chat_display.tag_configure('timestamp', 
+                                      foreground=self.fg_secondary, 
+                                      font=('SF Pro Display', 9))
+        
+        # Message labels with emojis
+        self.chat_display.tag_configure('user_label', 
+                                      foreground=self.accent_color, 
+                                      font=('SF Pro Display', 11, 'bold'))
+        self.chat_display.tag_configure('assistant_label', 
+                                      foreground=self.success_color, 
+                                      font=('SF Pro Display', 11, 'bold'))
+        self.chat_display.tag_configure('screenshot_label', 
+                                      foreground=self.screenshot_color, 
+                                      font=('SF Pro Display', 11, 'bold'))
+        
+        # Message content styling - modern card-like appearance
+        self.chat_display.tag_configure('user_message', 
+                                      foreground=self.fg_color,
+                                      background=self.user_color,
+                                      lmargin1=20, lmargin2=20, rmargin=20,
+                                      spacing1=8, spacing3=8,
+                                      borderwidth=1, relief='solid')
+        
+        self.chat_display.tag_configure('assistant_message', 
+                                      foreground=self.fg_color,
+                                      background=self.assistant_color,
+                                      lmargin1=20, lmargin2=20, rmargin=20,
+                                      spacing1=8, spacing3=8,
+                                      borderwidth=1, relief='solid')
+        
+        self.chat_display.tag_configure('screenshot_message', 
+                                      foreground=self.fg_color,
+                                      background=self.screenshot_color,
+                                      lmargin1=20, lmargin2=20, rmargin=20,
+                                      spacing1=8, spacing3=8,
+                                      borderwidth=1, relief='solid')
+        
+        # Code block styling - enhanced for markdown
+        self.chat_display.tag_configure('code_block', 
+                                      foreground='#e6edf3',
+                                      background='#161b22',
+                                      font=('JetBrains Mono', 10),
+                                      lmargin1=30, lmargin2=30, rmargin=30,
+                                      spacing1=4, spacing3=4,
+                                      borderwidth=1, relief='solid')
+        
+        # Inline code styling
+        self.chat_display.tag_configure('code_inline', 
+                                      foreground='#f85149',
+                                      background='#2d2d2d',
+                                      font=('JetBrains Mono', 10))
+        
+        # Headers for markdown
+        self.chat_display.tag_configure('header1', 
+                                      foreground=self.accent_color,
+                                      font=('SF Pro Display', 16, 'bold'),
+                                      spacing1=12, spacing3=6)
+        
+        self.chat_display.tag_configure('header2', 
+                                      foreground=self.accent_color,
+                                      font=('SF Pro Display', 14, 'bold'),
+                                      spacing1=10, spacing3=4)
+        
+        # Bold and italic
+        self.chat_display.tag_configure('bold', font=('SF Pro Display', 11, 'bold'))
+        self.chat_display.tag_configure('italic', font=('SF Pro Display', 11, 'italic'))
+        
+        # Links
+        self.chat_display.tag_configure('link', 
+                                      foreground=self.accent_color,
+                                      underline=True)
+        
+        # Error styling
+        self.chat_display.tag_configure('error', 
+                                      foreground=self.error_color,
+                                      background='#2d1b1b')
     
     def _setup_shortcuts(self):
         """Setup keyboard shortcuts"""
@@ -241,18 +417,34 @@ class PersistentChatWindow:
     
     def _handle_screenshot(self, data: Dict[str, Any]):
         """Handle screenshot received from daemon"""
+        import time
+        
+        # Debounce mechanism to prevent double screenshots
+        current_time = time.time()
+        if current_time - self.last_screenshot_time < 2.0:  # 2 second debounce
+            logger.debug("Screenshot ignored due to debounce")
+            return
+        
+        self.last_screenshot_time = current_time
+        
         image_path = data.get('image_path')
         context = data.get('context', {})
         
         if image_path:
+            logger.info(f"Processing screenshot: {image_path}")
+            
             # Add screenshot to conversation
             message = self.conversation_manager.add_screenshot_message(image_path, context)
             
             # Update GUI in main thread
             self.root.after(0, lambda: self._display_screenshot_message(message))
             
-            # Send to LLM and get response
-            asyncio.create_task(self._process_screenshot_with_llm(image_path, context))
+            # Send to LLM and get response in a new thread to avoid blocking GUI
+            import threading
+            threading.Thread(
+                target=lambda: asyncio.run(self._process_screenshot_with_llm(image_path, context)),
+                daemon=True
+            ).start()
     
     def _handle_llm_response(self, data: Dict[str, Any]):
         """Handle LLM response from daemon"""
@@ -279,26 +471,11 @@ class PersistentChatWindow:
             # Update status
             self.root.after(0, lambda: self.status_label.config(text="Processing screenshot with LLM..."))
             
-            # Get conversation messages for API
-            api_messages = self.conversation_manager.get_messages_for_api()
+            # Build context prompt from context data
+            context_prompt = self._format_context_for_llm(context)
             
-            # Send to LLM (modify last message to include actual image)
-            if api_messages:
-                last_message = api_messages[-1]
-                if 'content' in last_message and isinstance(last_message['content'], list):
-                    for content_item in last_message['content']:
-                        if content_item.get('type') == 'image_path':
-                            # Replace with actual image for API
-                            content_item['type'] = 'image'
-                            content_item['source'] = {
-                                'type': 'base64',
-                                'media_type': self.llm_client._get_image_mime_type(image_path),
-                                'data': self.llm_client._encode_image(image_path)
-                            }
-                            del content_item['image_path']
-            
-            # Get response from LLM
-            response_text = await self._get_llm_response_from_conversation()
+            # Send to LLM using the existing client
+            response_text = await self.llm_client.send_screenshot(image_path, context_prompt)
             
             if response_text:
                 # Add response to conversation
@@ -314,6 +491,103 @@ class PersistentChatWindow:
             logger.error(f"Error processing screenshot: {e}")
             error_msg = f"Error processing screenshot: {str(e)}"
             self.root.after(0, lambda: self._display_error(error_msg))
+    
+    def _format_context_for_llm(self, context: Dict[str, Any]) -> str:
+        """Format context data for LLM prompt"""
+        if not context:
+            return "Help me with this screenshot."
+        
+        parts = []
+        
+        if context.get('app_name'):
+            parts.append(f"I'm using {context['app_name']}")
+        
+        if context.get('window_title'):
+            parts.append(f"Window: {context['window_title']}")
+        
+        if context.get('working_dir'):
+            parts.append(f"Working directory: {context['working_dir']}")
+        
+        context_text = ". ".join(parts) if parts else "I need help"
+        return f"{context_text}. Help me with:"
+    
+    def _parse_markdown(self, text: str) -> list:
+        """Parse markdown text into formatted segments"""
+        segments = []
+        lines = text.split('\n')
+        i = 0
+        
+        while i < len(lines):
+            line = lines[i]
+            
+            # Code blocks
+            if line.strip().startswith('```'):
+                # Start of code block
+                language = line.strip()[3:].strip()
+                code_lines = []
+                i += 1
+                
+                while i < len(lines) and not lines[i].strip().startswith('```'):
+                    code_lines.append(lines[i])
+                    i += 1
+                
+                if code_lines:
+                    code_text = '\n'.join(code_lines)
+                    segments.append(('code_block', code_text))
+                
+                i += 1
+                continue
+            
+            # Headers
+            elif line.startswith('# '):
+                segments.append(('header1', line[2:]))
+            elif line.startswith('## '):
+                segments.append(('header2', line[3:]))
+            
+            # Regular text with inline formatting
+            else:
+                if line.strip():  # Non-empty line
+                    formatted_line = self._parse_inline_formatting(line)
+                    segments.extend(formatted_line)
+                else:
+                    segments.append(('normal', '\n'))
+            
+            i += 1
+        
+        return segments
+    
+    def _parse_inline_formatting(self, line: str) -> list:
+        """Parse inline markdown formatting"""
+        segments = []
+        
+        # Simple regex patterns for inline formatting
+        import re
+        
+        # Split by code blocks first
+        parts = re.split(r'(`[^`]+`)', line)
+        
+        for part in parts:
+            if part.startswith('`') and part.endswith('`'):
+                # Inline code
+                segments.append(('code_inline', part[1:-1]))
+            else:
+                # Check for bold/italic
+                bold_parts = re.split(r'(\*\*[^*]+\*\*)', part)
+                for bold_part in bold_parts:
+                    if bold_part.startswith('**') and bold_part.endswith('**'):
+                        segments.append(('bold', bold_part[2:-2]))
+                    else:
+                        # Check for italic
+                        italic_parts = re.split(r'(\*[^*]+\*)', bold_part)
+                        for italic_part in italic_parts:
+                            if italic_part.startswith('*') and italic_part.endswith('*'):
+                                segments.append(('italic', italic_part[1:-1]))
+                            else:
+                                if italic_part:
+                                    segments.append(('normal', italic_part))
+        
+        segments.append(('normal', '\n'))
+        return segments
     
     async def _get_llm_response_from_conversation(self) -> str:
         """Get LLM response using full conversation context"""
@@ -530,7 +804,7 @@ class PersistentChatWindow:
             messagebox.showerror("Image Error", f"Could not display image: {e}")
     
     def _display_assistant_message(self, message: Dict[str, Any]):
-        """Display assistant message in chat"""
+        """Display assistant message with markdown formatting"""
         self.chat_display.config(state=tk.NORMAL)
         
         # Timestamp
@@ -538,8 +812,32 @@ class PersistentChatWindow:
         self.chat_display.insert(tk.END, f"[{timestamp}] ", 'timestamp')
         
         # Assistant label
-        self.chat_display.insert(tk.END, "🤖 Assistant: ", 'assistant_label')
-        self.chat_display.insert(tk.END, f"{message['content']}\n\n", 'assistant_message')
+        self.chat_display.insert(tk.END, "🤖 Assistant:\n", 'assistant_label')
+        
+        # Parse and render markdown content
+        content = message['content']
+        markdown_segments = self._parse_markdown(content)
+        
+        # Render each segment with appropriate formatting
+        for segment_type, segment_text in markdown_segments:
+            if segment_type == 'normal':
+                self.chat_display.insert(tk.END, segment_text, 'assistant_message')
+            elif segment_type == 'code_block':
+                self.chat_display.insert(tk.END, f"\n{segment_text}\n", 'code_block')
+            elif segment_type == 'code_inline':
+                self.chat_display.insert(tk.END, segment_text, 'code_inline')
+            elif segment_type == 'bold':
+                self.chat_display.insert(tk.END, segment_text, 'bold')
+            elif segment_type == 'italic':
+                self.chat_display.insert(tk.END, segment_text, 'italic')
+            elif segment_type == 'header1':
+                self.chat_display.insert(tk.END, f"\n{segment_text}\n", 'header1')
+            elif segment_type == 'header2':
+                self.chat_display.insert(tk.END, f"\n{segment_text}\n", 'header2')
+            else:
+                self.chat_display.insert(tk.END, segment_text, 'assistant_message')
+        
+        self.chat_display.insert(tk.END, "\n\n")
         
         # Auto-scroll to bottom
         self.chat_display.see(tk.END)
@@ -617,13 +915,18 @@ class PersistentChatWindow:
         # Display in chat
         self._display_user_message(message)
         
-        # Get LLM response
-        asyncio.create_task(self._get_user_message_response())
+        # Get LLM response in a separate thread
+        import threading
+        threading.Thread(
+            target=lambda: asyncio.run(self._get_user_message_response()),
+            daemon=True
+        ).start()
     
     async def _get_user_message_response(self):
         """Get LLM response to user message"""
         try:
-            self.status_label.config(text="Getting response...")
+            # Update status
+            self.root.after(0, lambda: self.status_label.config(text="Getting response..."))
             
             # For now, just echo back (TODO: implement proper conversation)
             response_text = "I received your message. Full conversation context will be implemented in the next phase."

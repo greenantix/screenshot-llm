@@ -1,0 +1,38 @@
+{
+  "id": "conversation_2025-06-09_12-01-04",
+  "created": "2025-06-09T12:01:04.927982",
+  "messages": [
+    {
+      "timestamp": "2025-06-09T12:01:04.927709",
+      "type": "screenshot",
+      "content": "Screenshot: test_screenshot.png",
+      "image_path": "/tmp/test_screenshot.png",
+      "context": {
+        "app": "terminal",
+        "window_title": "test"
+      }
+    },
+    {
+      "timestamp": "2025-06-09T12:01:04.927802",
+      "type": "user",
+      "content": "What do you see in this screenshot?",
+      "context": {
+        "app": "terminal",
+        "window_title": "test"
+      }
+    },
+    {
+      "timestamp": "2025-06-09T12:01:04.927878",
+      "type": "assistant",
+      "content": "I can see a terminal window.",
+      "context": {
+        "app": "terminal",
+        "window_title": "test"
+      }
+    }
+  ],
+  "context": {
+    "app": "terminal",
+    "window_title": "test"
+  }
+}
