@@ -1,0 +1,3 @@
+[console_scripts]
+screenshot-llm = screenshot_llm.main:main
+

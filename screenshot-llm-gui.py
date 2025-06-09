@@ -1,89 +1,136 @@
 #!/usr/bin/env python3
-"""
-Screenshot LLM Assistant - GUI Process
 
-Separate process for the persistent chat window that communicates
-with the main daemon via IPC.
-"""
-
-import asyncio
-import logging
-import os
 import sys
-import signal
-import argparse
+import tkinter as tk
+from tkinter import messagebox
+import logging
 from pathlib import Path
+import argparse
+import json
+from typing import Optional, Dict
 
-# Add lib directory to path
-lib_path = Path(__file__).parent / 'lib'
-sys.path.insert(0, str(lib_path))
+from lib.chat_window import ChatWindow
+from lib.logger import get_logger, log_exception
+from lib.image_processor import get_image_processor
+from lib.conversation_manager import ConversationManager
 
-from chat_window import PersistentChatWindow
+logger = get_logger()
 
-logger = logging.getLogger(__name__)
+def check_dependencies() -> bool:
+    """Check if all required dependencies are available"""
+    try:
+        import PIL
+        import pygments
+        import pystray
+        return True
+    except ImportError as e:
+        log_exception(e, "Missing required dependency")
+        messagebox.showerror(
+            "Missing Dependencies",
+            "Please install required dependencies:\n\n" +
+            "pip install Pillow pygments pystray"
+        )
+        return False
 
-def setup_logging(config_dir: str, debug: bool = False):
-    """Setup logging for GUI process"""
-    log_dir = os.path.join(config_dir, 'logs')
-    os.makedirs(log_dir, exist_ok=True)
-    
-    log_file = os.path.join(log_dir, 'screenshot-llm-gui.log')
-    
-    level = logging.DEBUG if debug else logging.INFO
-    
-    logging.basicConfig(
-        level=level,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
-    
-    logger.info("Screenshot LLM Assistant GUI starting...")
+def load_config() -> Optional[Dict]:
+    """Load configuration from config.json"""
+    try:
+        config_path = Path("config/config.json")
+        if not config_path.exists():
+            logger.error("Configuration file not found")
+            messagebox.showerror(
+                "Configuration Error",
+                "config.json not found. Please ensure it exists in the config directory."
+            )
+            return None
+            
+        with open(config_path, 'r') as f:
+            return json.load(f)
+            
+    except Exception as e:
+        log_exception(e, "Failed to load configuration")
+        messagebox.showerror(
+            "Configuration Error",
+            "Failed to load configuration. Please check config.json is valid."
+        )
+        return None
+
+def setup_directories() -> bool:
+    """Create necessary directories if they don't exist"""
+    try:
+        # Create logs directory
+        Path("logs").mkdir(exist_ok=True)
+        
+        # Create conversations directory
+        Path("conversations").mkdir(exist_ok=True)
+        
+        return True
+        
+    except Exception as e:
+        log_exception(e, "Failed to create required directories")
+        messagebox.showerror(
+            "Setup Error",
+            "Failed to create required directories. Please check permissions."
+        )
+        return False
 
 def main():
-    """Main entry point for GUI process"""
-    parser = argparse.ArgumentParser(description="Screenshot LLM Assistant - GUI")
-    parser.add_argument('--config-dir', default="~/.local/share/screenshot-llm",
-                       help='Configuration directory')
-    parser.add_argument('--debug', action='store_true',
-                       help='Enable debug logging')
-    parser.add_argument('--minimized', action='store_true',
-                       help='Start minimized to system tray')
-    
-    args = parser.parse_args()
-    
-    config_dir = os.path.expanduser(args.config_dir)
-    
-    # Setup logging
-    setup_logging(config_dir, args.debug)
-    
-    # Setup signal handlers for graceful shutdown
-    def signal_handler(signum, frame):
-        logger.info(f"Received signal {signum}, shutting down GUI...")
-        sys.exit(0)
-    
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    
+    """Initialize and run the application"""
     try:
-        # Create and run chat window
-        chat_window = PersistentChatWindow(config_dir)
+        # Parse command line arguments
+        parser = argparse.ArgumentParser(description="Screenshot LLM Assistant GUI")
+        parser.add_argument("--minimized", 
+                          action="store_true",
+                          help="Start minimized to system tray")
+        args = parser.parse_args()
         
+        # Setup logging
+        logger.info("Starting Screenshot LLM Assistant GUI")
+        
+        # Check dependencies
+        if not check_dependencies():
+            sys.exit(1)
+            
+        # Create required directories
+        if not setup_directories():
+            sys.exit(1)
+            
+        # Load configuration
+        config = load_config()
+        if not config:
+            sys.exit(1)
+            
+        # Create main window
+        window = ChatWindow()
+        
+        # Apply configuration
+        if "ui" in config:
+            if "window" in config["ui"]:
+                window.geometry(f"{config['ui']['window']['default_width']}x" +
+                              f"{config['ui']['window']['default_height']}")
+                window.minsize(config['ui']['window']['min_width'],
+                             config['ui']['window']['min_height'])
+        
+        # Start minimized if requested
         if args.minimized:
-            # Start minimized
-            chat_window.create_window()
-            chat_window._minimize_to_tray()
+            window.after(0, window._minimize_to_tray)
         
-        # Run the GUI
-        chat_window.run()
+        # Start main loop
+        window.mainloop()
         
-    except KeyboardInterrupt:
-        logger.info("GUI stopped by user")
     except Exception as e:
-        logger.error(f"GUI error: {e}")
+        log_exception(e, "Fatal error in main")
+        messagebox.showerror(
+            "Fatal Error",
+            "An unexpected error occurred. Please check the logs for details."
+        )
         sys.exit(1)
+    finally:
+        # Cleanup
+        try:
+            get_image_processor().cleanup()
+        except:
+            pass
 
 if __name__ == "__main__":
     main()

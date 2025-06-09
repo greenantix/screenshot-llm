@@ -1,70 +1,43 @@
 #!/bin/bash
-# Cleanup script for Screenshot LLM Assistant
-# Kills all running processes and cleans up temporary files
 
-echo "🧹 Cleaning up Screenshot LLM Assistant processes..."
-
-# Find all screenshot-llm processes
-PROCESSES=$(ps aux | grep screenshot-llm | grep -v grep | grep -v kill-all.sh | awk '{print $2}')
-
-if [ -z "$PROCESSES" ]; then
-    echo "  ✅ No screenshot-llm processes found"
-else
-    echo "  🔍 Found processes: $PROCESSES"
+# Function to kill processes by name
+kill_process() {
+    local process_name=$1
+    local pids
     
-    # Kill processes nicely first
-    for pid in $PROCESSES; do
-        echo "  🛑 Killing process $pid..."
-        kill $pid 2>/dev/null
-    done
+    # Find PIDs for the process
+    pids=$(pgrep -f "$process_name" 2>/dev/null)
     
-    # Wait a moment
-    sleep 2
-    
-    # Check if any are still running and force kill
-    REMAINING=$(ps aux | grep screenshot-llm | grep -v grep | grep -v kill-all.sh | awk '{print $2}')
-    if [ ! -z "$REMAINING" ]; then
-        echo "  💀 Force killing remaining processes: $REMAINING"
-        for pid in $REMAINING; do
-            kill -9 $pid 2>/dev/null
+    if [ -n "$pids" ]; then
+        echo "Stopping $process_name processes..."
+        for pid in $pids; do
+            # Don't kill the kill-all.sh script itself
+            if [ "$pid" != $$ ]; then
+                kill -15 "$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null
+            fi
         done
     fi
+}
+
+# Kill all related processes
+kill_process "screenshot-llm.py"
+kill_process "screenshot-llm-gui.py"
+
+# Clean up IPC socket if it exists
+socket_path="/tmp/screenshot-llm.sock"
+if [ -S "$socket_path" ]; then
+    echo "Removing IPC socket..."
+    rm "$socket_path"
 fi
 
-# Kill any zenity dialogs that might be open
-ZENITY_PROCESSES=$(ps aux | grep zenity | grep -v grep | awk '{print $2}')
-if [ ! -z "$ZENITY_PROCESSES" ]; then
-    echo "  🗃️  Closing zenity dialogs: $ZENITY_PROCESSES"
-    for pid in $ZENITY_PROCESSES; do
-        kill $pid 2>/dev/null
-    done
-fi
+# Give processes time to clean up
+sleep 1
 
-# Clean up socket file
-if [ -f "screenshot-llm.sock" ]; then
-    echo "  🧹 Removing socket file"
-    rm -f screenshot-llm.sock
-fi
-
-# Clean up any temporary test files
-if [ -f "gui.log" ]; then
-    echo "  🧹 Removing test log file"
-    rm -f gui.log
-fi
-
-# Final verification
-REMAINING_ALL=$(ps aux | grep screenshot-llm | grep -v grep | grep -v kill-all.sh)
-if [ -z "$REMAINING_ALL" ]; then
-    echo "  ✅ All processes cleaned up successfully!"
-    echo ""
-    echo "🚀 Ready to start fresh:"
-    echo "  ./run.sh"
-    echo "  python start-screenshot-llm.py"
+# Check if any processes are still running
+remaining=$(pgrep -f "screenshot-llm" 2>/dev/null)
+if [ -n "$remaining" ]; then
+    echo "Warning: Some processes are still running. PIDs: $remaining"
+    echo "You may need to kill them manually or wait a moment and try again."
 else
-    echo "  ⚠️  Some processes may still be running:"
-    echo "$REMAINING_ALL"
-    echo ""
-    echo "💡 If processes persist, try:"
-    echo "  sudo killall python3"
-    echo "  (Warning: This will kill ALL Python processes)"
+    echo "All processes stopped successfully."
 fi

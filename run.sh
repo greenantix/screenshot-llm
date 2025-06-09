@@ -1,71 +1,71 @@
 #!/bin/bash
-# Quick start script for Screenshot LLM Assistant v2.0
 
-cd "$(dirname "$0")"
+# Function to check if required dependencies are installed
+check_dependencies() {
+    local missing=()
+    
+    # Check Python dependencies
+    if ! python3 -c "import tkinter" 2>/dev/null; then
+        missing+=("python3-tk")
+    fi
 
-echo "🚀 Starting Screenshot LLM Assistant v2.0..."
-echo ""
+    # Check system dependencies for pystray
+    if ! dpkg -l | grep -q "gir1.2-ayatanaappindicator3"; then
+        echo "Installing required system packages for tray icon support..."
+        sudo apt-get install -y gir1.2-ayatanaappindicator3-0.1
+    fi
 
-# Check if config exists
-if [ ! -f "config/config.json" ]; then
-    echo "❌ Configuration not found!"
-    echo "Please edit config/config.json and add your API key."
-    exit 1
-fi
+    # Check additional Python packages
+    if ! python3 -c "import pystray" 2>/dev/null; then
+        echo "Installing required Python package: pystray"
+        pip3 install pystray pillow
+    fi
+    
+    # Check system dependencies
+    dependencies=("grim" "wlr-randr" "maim" "scrot" "xdotool" "zenity")
+    for dep in "${dependencies[@]}"; do
+        if ! command -v "$dep" &>/dev/null; then
+            missing+=("$dep")
+        fi
+    done
+    
+    # If missing dependencies, prompt to install
+    if [ ${#missing[@]} -gt 0 ]; then
+        echo "Missing required dependencies: ${missing[*]}"
+        echo "Please install them using:"
+        echo "sudo apt install ${missing[*]}"
+        exit 1
+    fi
+}
 
-# Check API key
-if ! grep -q '"api_key":\s*"[^"]\+[^"]"' config/config.json; then
-    echo "⚠️  Warning: No API key found in config.json"
-    echo "   Please add your Anthropic or OpenAI API key to config/config.json"
-    echo ""
-fi
+# Function to clean up any existing processes
+cleanup() {
+    echo "Cleaning up existing processes..."
+    ./kill-all.sh >/dev/null 2>&1
+}
 
-# Check tkinter
-if python3 -c "import tkinter" 2>/dev/null; then
-    echo "✅ Dependencies: All installed"
-else
-    echo "❌ Missing tkinter! Please run: sudo apt install python3-tk"
-    exit 1
-fi
+# Function to start the application
+start_app() {
+    # Start GUI minimized if requested
+    if [ "$1" == "--minimized" ]; then
+        echo "Starting Screenshot LLM Assistant (minimized)..."
+        python3 screenshot-llm-gui.py --minimized &
+    else
+        echo "Starting Screenshot LLM Assistant..."
+        python3 screenshot-llm-gui.py &
+    fi
+    
+    # Give GUI time to start
+    sleep 2
+    
+    # Start daemon
+    echo "Starting screenshot daemon..."
+    python3 screenshot-llm.py &
+    
+    echo "Setup complete! Use Ctrl+Alt+P to take screenshots."
+}
 
-echo "✅ Screenshot tools: Available"  
-echo "✅ Permissions: User in input group"
-echo "✅ GUI Framework: tkinter available"
-echo ""
-
-echo "Choose startup mode:"
-echo "1) Complete system (GUI + Daemon) [Recommended]"
-echo "2) GUI only"
-echo "3) Daemon only (fallback mode)"
-echo "4) Run tests"
-echo "5) Kill all processes (cleanup)"
-echo ""
-
-read -p "Enter choice (1-5): " choice
-
-case $choice in
-    1)
-        echo "🎯 Starting complete system..."
-        python start-screenshot-llm.py
-        ;;
-    2)
-        echo "🖥️  Starting GUI only..."
-        python screenshot-llm-gui.py
-        ;;
-    3)
-        echo "⚙️  Starting daemon only..."
-        python screenshot-llm.py
-        ;;
-    4)
-        echo "🧪 Running tests..."
-        python test-persistent-chat.py
-        ;;
-    5)
-        echo "🧹 Cleaning up all processes..."
-        ./kill-all.sh
-        ;;
-    *)
-        echo "Invalid choice. Starting complete system..."
-        python start-screenshot-llm.py
-        ;;
-esac
+# Main script
+check_dependencies
+cleanup
+start_app "$@"

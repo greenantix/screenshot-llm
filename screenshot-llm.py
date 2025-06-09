@@ -66,11 +66,10 @@ class ScreenshotLLMDaemon:
         try:
             logger.info("Mouse button 9 pressed - processing screenshot request")
             
-            # Initialize IPC client if needed
-            if not self.ipc_client:
-                self.ipc_client = self.ipc_manager.create_client()
+            # Check if GUI is running
+            gui_available = self.ipc_manager.is_server_running()
             
-            # Capture screenshot
+            # Capture screenshot first - we'll need it either way
             logger.info("Capturing screenshot...")
             screenshot_path = self.screenshot_capture.capture_screen()
             logger.info(f"Screenshot saved to: {screenshot_path}")
@@ -80,29 +79,60 @@ class ScreenshotLLMDaemon:
             context_data = self.context_detector.get_active_window_info()
             logger.info(f"Context: {context_data}")
             
-            # Send screenshot to GUI via IPC
-            logger.info("Sending screenshot to GUI...")
-            success = await self.ipc_client.send_screenshot(screenshot_path, context_data)
+            if gui_available:
+                # Try to send to GUI first
+                try:
+                    # Create new IPC client for fresh connection
+                    self.ipc_client = self.ipc_manager.create_client()
+                    
+                    logger.info("Sending screenshot to GUI...")
+                    success = await self.ipc_client.send_screenshot(screenshot_path, context_data)
+                    
+                    if success:
+                        logger.info("Screenshot sent to GUI successfully")
+                        return
+                    else:
+                        logger.warning("Failed to send to GUI despite server being available")
+                        
+                except Exception as ipc_error:
+                    logger.error(f"IPC error: {ipc_error}")
+                finally:
+                    # Clean up IPC client
+                    if self.ipc_client:
+                        self.ipc_client.disconnect()
+                        self.ipc_client = None
             
-            if not success:
-                logger.warning("Failed to send screenshot via IPC, falling back to direct processing")
-                # Fallback: process directly and show in zenity
-                context_prompt = self.context_detector.build_context_prompt()
-                llm_response = await self.llm_client.send_screenshot(screenshot_path, context_prompt)
-                subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "zenity_display.py"), llm_response])
-            else:
-                logger.info("Screenshot sent to GUI successfully")
-                # Return early - GUI will handle LLM processing
-                return
+            # If we reach here, either GUI is not running or communication failed
+            logger.info("Using zenity fallback for display")
+            context_prompt = self.context_detector.build_context_prompt()
+            llm_response = await self.llm_client.send_screenshot(screenshot_path, context_prompt)
             
-            # Note: Don't delete screenshot immediately - let GUI handle it or delete after processing
+            # Show response in zenity
+            subprocess.run(
+                [sys.executable,
+                 os.path.join(os.path.dirname(__file__), "zenity_display.py"),
+                 llm_response]
+            )
+            
+            # Clean up screenshot after processing
+            try:
+                os.unlink(screenshot_path)
+            except Exception as e:
+                logger.warning(f"Failed to clean up screenshot: {e}")
             
         except Exception as e:
             logger.error(f"Error processing screenshot request: {e}")
             # Fallback to zenity for errors
             try:
-                error_response = f"Error processing request: {str(e)}\n\nPlease check your configuration and try again."
-                subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "zenity_display.py"), error_response])
+                error_response = (
+                    f"Error processing request: {str(e)}\n\n"
+                    "Please check your configuration and try again."
+                )
+                subprocess.run(
+                    [sys.executable,
+                     os.path.join(os.path.dirname(__file__), "zenity_display.py"),
+                     error_response]
+                )
             except Exception as fallback_error:
                 logger.error(f"Failed to show error via fallback: {fallback_error}")
     

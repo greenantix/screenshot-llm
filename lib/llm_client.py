@@ -22,23 +22,42 @@ class LLMClient:
         """Load API configuration"""
         try:
             with open(self.config_file, 'r') as f:
-                config = json.load(f)
+                full_config = json.load(f)
                 
+            # Extract LLM config
+            config = full_config.get('llm', {})
+            
             # Check for API key in environment if not in config
             if not config.get('api_key'):
                 if config.get('provider') == 'anthropic':
                     config['api_key'] = os.environ.get('ANTHROPIC_API_KEY', '')
                 elif config.get('provider') == 'openai':
                     config['api_key'] = os.environ.get('OPENAI_API_KEY', '')
-                    
-            return config
+            
+            # Ensure all required fields are present
+            default_config = {
+                'provider': 'openai',
+                'api_key': '',
+                'model': 'gpt-4-vision-preview',
+                'max_tokens': 4096,
+                'temperature': 0.7
+            }
+            
+            if config.get('provider') == 'anthropic':
+                default_config['model'] = 'claude-3-haiku-20240307'
+            
+            # Update default config with loaded values
+            default_config.update(config)
+            return default_config
+            
         except Exception as e:
             logger.error(f"Could not load config: {e}")
             return {
-                'provider': 'anthropic',
+                'provider': 'openai',
                 'api_key': '',
-                'model': 'claude-3-5-haiku-20241022',
-                'max_tokens': 4096
+                'model': 'gpt-4-vision-preview',
+                'max_tokens': 4096,
+                'temperature': 0.7
             }
     
     def _initialize_client(self):
@@ -154,12 +173,26 @@ class LLMClient:
     
     def update_api_key(self, api_key: str):
         """Update API key in config"""
-        self.config['api_key'] = api_key
         try:
+            # Load full config
+            with open(self.config_file, 'r') as f:
+                full_config = json.load(f)
+            
+            # Update API key
+            if 'llm' not in full_config:
+                full_config['llm'] = {}
+            full_config['llm']['api_key'] = api_key
+            
+            # Save updated config
             with open(self.config_file, 'w') as f:
-                json.dump(self.config, f, indent=2)
+                json.dump(full_config, f, indent=2)
+            
+            # Update current config and reinitialize client
+            self.config['api_key'] = api_key
             self._initialize_client()
+            
             logger.info("API key updated successfully")
+            
         except Exception as e:
             logger.error(f"Failed to update API key: {e}")
             raise
