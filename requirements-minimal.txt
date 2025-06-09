@@ -1,0 +1,6 @@
+evdev>=1.6.0
+pynput>=1.7.0
+anthropic>=0.7.0
+openai>=1.0.0
+Pillow>=10.0.0
+pygments>=2.14.0

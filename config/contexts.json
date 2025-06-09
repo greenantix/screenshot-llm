@@ -1,0 +1,22 @@
+{
+  "terminal": {
+    "apps": ["gnome-terminal", "cosmic-term", "kitty", "alacritty", "terminator"],
+    "get_context": "pwd, git status, current command",
+    "prompt_template": "I'm working in a terminal. Current directory: {pwd}. Git status: {git_status}. Help me with this terminal task:"
+  },
+  "vscode": {
+    "apps": ["code", "codium", "code-oss"],
+    "get_context": "current file, language, project root",
+    "prompt_template": "I'm coding in {language} in VS Code. Project: {project}. File: {file}. Help me with:"
+  },
+  "browser": {
+    "apps": ["firefox", "chrome", "chromium", "google-chrome"],
+    "get_context": "current URL, page title",
+    "prompt_template": "I'm browsing {url}. Page title: {title}. Help me with:"
+  },
+  "default": {
+    "apps": ["*"],
+    "get_context": "active window title",
+    "prompt_template": "I'm using {app}. Window: {window_title}. Help me with:"
+  }
+}
