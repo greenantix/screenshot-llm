@@ -1,196 +1,285 @@
-# Screenshot LLM Assistant
+# Screenshot LLM Assistant v2.0 - Interactive Persistent Chat
 
-A lightweight Linux tool that captures screenshots on mouse button 9 press, sends them to an LLM with context-aware prompts, and provides an efficient interface for executing returned commands.
+A powerful desktop assistant that captures screenshots and provides intelligent analysis through a persistent, interactive chat interface. Now features continuous conversations, context preservation, and a modern GUI.
 
-## 🚀 Quick Start
+## ✨ New Features in v2.0
 
-1. **Run setup:**
-   ```bash
-   source ~/.local/share/screenshot-llm/venv/bin/activate
-   python ~/.local/share/screenshot-llm/setup.py
-   ```
+- **🗨️ Persistent Chat Interface**: Modern Tkinter-based window that stays open for continuous interaction
+- **💬 Conversation History**: Full context preservation across screenshots and user messages  
+- **🔄 Inter-Process Communication**: Robust IPC between screenshot daemon and chat GUI
+- **💾 Conversation Persistence**: Save, load, and manage conversation sessions
+- **🖼️ Screenshot Thumbnails**: Visual preview of screenshots with full-size viewing
+- **⌨️ Keyboard Shortcuts**: Efficient navigation and control
+- **🎛️ System Tray Integration**: Minimizes to tray instead of closing
 
-2. **Test screenshot capture:**
-   ```bash
-   python ~/.local/share/screenshot-llm/screenshot-llm.py --test-screenshot
-   ```
+## Features
 
-3. **Start the daemon:**
-   ```bash
-   python ~/.local/share/screenshot-llm/screenshot-llm.py
-   ```
+### Core Functionality
+- **Automatic Screenshot Capture**: Triggers on mouse button 9 press
+- **Multi-Monitor Support**: Captures the screen containing the cursor
+- **Context-Aware Prompts**: Detects active applications and working directories
+- **Multiple LLM Providers**: Supports both Anthropic Claude and OpenAI GPT
+- **Optimized Image Processing**: Automatically resizes images for efficient API transmission
 
-4. **Press mouse button 9** anywhere to capture and analyze!
+### Chat Interface
+- **Interactive Conversations**: Ask follow-up questions about screenshots
+- **Message History**: Scrollable conversation with timestamps
+- **Visual Screenshots**: Embedded thumbnails with click-to-expand
+- **Export Options**: Save conversations as text files
+- **Multiple Sessions**: Create, load, and manage different conversation threads
 
-## 🎯 Features
+## Installation
 
-- **Context-Aware**: Detects your current application and builds smart prompts
-- **Multi-Monitor Support**: Captures the screen containing your cursor
-- **Command Extraction**: Automatically finds and formats commands from LLM responses
-- **Safe Execution**: Validates commands before offering execution
-- **Clipboard Integration**: One-click copying of commands
-- **Multiple LLM Providers**: Supports Anthropic Claude and OpenAI
+1. Clone or download this repository to `~/.local/share/screenshot-llm`
 
-## 🖱️ Usage
-
-1. **Capture Screenshot**: Press mouse button 9 (forward button)
-2. **Wait for Analysis**: LLM analyzes the screenshot with context
-3. **Review Results**: Commands are extracted and displayed
-4. **Copy/Execute**: Click to copy commands or open terminal
-
-## ⚙️ Configuration
-
-Edit `~/.local/share/screenshot-llm/config/config.json`:
-
-```json
-{
-  "provider": "anthropic",
-  "api_key": "your-api-key-here",
-  "model": "claude-3-5-haiku-20241022",
-  "max_tokens": 4096,
-  "auto_delete_screenshots": true
-}
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
 ```
 
-### API Keys
-
-- **Anthropic**: Get from [console.anthropic.com](https://console.anthropic.com/)
-- **OpenAI**: Get from [platform.openai.com](https://platform.openai.com/api-keys)
-
-You can also set environment variables:
+3. Configure your API key:
 ```bash
-export ANTHROPIC_API_KEY="your-key"
-export OPENAI_API_KEY="your-key"
+# Edit the config file
+nano ~/.local/share/screenshot-llm/config/config.json
+
+# Or set environment variable
+export ANTHROPIC_API_KEY="your-api-key-here"
+# or
+export OPENAI_API_KEY="your-api-key-here"
 ```
 
-## 🔧 Context Detection
+## Quick Start
 
-The tool automatically detects your current application and adapts prompts:
-
-- **Terminal**: Includes current directory and git status
-- **VS Code**: Includes project and file context
-- **Browser**: Includes page title and URL context
-- **Default**: Basic window information
-
-Customize contexts in `~/.local/share/screenshot-llm/config/contexts.json`.
-
-## 🖥️ System Requirements
-
-- **OS**: Pop!_OS 22.04+ (or Ubuntu/Debian with Wayland)
-- **Python**: 3.10+
-- **Hardware**: Multi-monitor setup supported
-- **Permissions**: User must be in `input` group
-
-## 📦 Dependencies
-
-### System Dependencies
+### Option 1: Start Complete System
 ```bash
-sudo apt install python3-pip python3-venv grim slurp wl-clipboard python3-evdev
+# Start both daemon and GUI with monitoring
+python start-screenshot-llm.py
+
+# Start GUI minimized to tray
+python start-screenshot-llm.py --minimized
+
+# Start daemon first (fallback mode)
+python start-screenshot-llm.py --daemon-first
 ```
 
-### Python Dependencies
-- `evdev` - Mouse event detection
-- `anthropic` / `openai` - LLM API clients
-- `Pillow` - Image processing
-- `pygments` - Syntax highlighting
-
-## 🔒 Permissions
-
-The tool needs access to input devices for mouse button detection:
-
+### Option 2: Start Components Separately
 ```bash
-sudo usermod -a -G input $USER
-# Logout and login again
+# Start GUI only
+python screenshot-llm-gui.py
+
+# Start daemon only (uses zenity fallback)
+python screenshot-llm.py
+
+# Start GUI minimized
+python screenshot-llm-gui.py --minimized
 ```
 
-## 🔄 Autostart (Optional)
-
-Install as systemd service:
-
+### Option 3: Install as System Service
 ```bash
-python ~/.local/share/screenshot-llm/setup.py
-# Choose 'y' when prompted about systemd service
-
-# Manual installation:
+python screenshot-llm.py --install-service
 systemctl --user enable screenshot-llm.service
 systemctl --user start screenshot-llm.service
 ```
 
-## 🧪 Testing
+## Usage Workflow
 
-Test individual components:
+1. **Take Screenshot**: Press mouse button 9 (side button)
+2. **Automatic Processing**: Screenshot appears in chat window with LLM analysis
+3. **Interactive Follow-up**: Type questions about the screenshot or ask for help
+4. **Continuous Context**: Each new screenshot adds to the ongoing conversation
+5. **Session Management**: Save conversations, start new ones, or load previous sessions
 
-```bash
-# Test screenshot capture
-python ~/.local/share/screenshot-llm/screenshot-llm.py --test-screenshot
+### Keyboard Shortcuts
 
-# Test context detection
-python ~/.local/share/screenshot-llm/screenshot-llm.py --test-context
+- `Ctrl+Enter`: Send message
+- `Ctrl+N`: New conversation
+- `Ctrl+S`: Save conversation
+- `Ctrl+Q`: Quit application
+- `Esc`: Minimize to tray
+- `Ctrl+C`: Copy selected text
+- `Ctrl+Shift+C`: Copy entire conversation
 
-# Test simple interface
-python ~/.local/share/screenshot-llm/lib/simple_interface.py
+## Configuration
+
+Edit `config/config.json`:
+
+```json
+{
+  "provider": "anthropic",
+  "api_key": "your-api-key",
+  "model": "claude-3-5-haiku-20241022",
+  "max_tokens": 4096,
+  "screenshot_dir": "~/.local/share/screenshot-llm/cache",
+  "history_dir": "~/.local/share/screenshot-llm/history", 
+  "mouse_button": 9,
+  "auto_delete_screenshots": true,
+  "persistent_chat": true,
+  "auto_save_conversations": true,
+  "max_conversation_length": 50,
+  "window_always_on_top": false,
+  "start_minimized": false
+}
 ```
 
-## 📝 Logs
+## Architecture
 
-Check logs for troubleshooting:
-```bash
-tail -f ~/.local/share/screenshot-llm/logs/screenshot-llm.log
+### System Components
+
+1. **Screenshot Daemon** (`screenshot-llm.py`): Captures screenshots and handles mouse events
+2. **Chat GUI** (`screenshot-llm-gui.py`): Persistent Tkinter window for conversations  
+3. **IPC Handler** (`lib/ipc_handler.py`): Unix socket communication between processes
+4. **Conversation Manager** (`lib/conversation.py`): Message history and persistence
+5. **Startup Manager** (`start-screenshot-llm.py`): Coordinates launching and monitoring
+
+### Process Flow
+
+```
+[Mouse Button 9] → [Screenshot Daemon] → [IPC] → [Chat GUI] → [LLM API] → [Response Display]
+                                                     ↓
+                                              [User Input] → [LLM API] → [Response Display]
 ```
 
-## 🔧 Troubleshooting
+### Inter-Process Communication
 
-### Mouse Button Not Working
-- Ensure you're in the `input` group: `groups | grep input`
-- Logout and login after adding to group
-- Check mouse device access: `ls -la /dev/input/event*`
+- **Protocol**: Unix domain sockets for fast, secure local communication
+- **Message Types**: `screenshot`, `llm_response`, `show_window`, `hide_window`
+- **Reliability**: Automatic reconnection and fallback mechanisms
+- **Security**: User-only socket permissions
 
-### Screenshot Issues
-- **Wayland**: Ensure `grim` is installed
-- **X11**: Install `maim` or `scrot`
-- Test manually: `grim test.png`
-
-### No GUI
-- Install GTK4 development packages for full GUI
-- Simple text interface will be used as fallback
-
-### API Errors
-- Verify API key in config file
-- Check network connectivity
-- Review API quota and billing
-
-## 📁 File Structure
+## File Structure
 
 ```
 ~/.local/share/screenshot-llm/
-├── screenshot-llm.py          # Main daemon
-├── setup.py                   # Setup script
-├── venv/                      # Python virtual environment
-├── config/
-│   ├── config.json           # API keys and settings
-│   └── contexts.json         # Application context profiles
+├── screenshot-llm.py              # Main daemon
+├── screenshot-llm-gui.py          # GUI process  
+├── start-screenshot-llm.py        # Startup coordinator
+├── zenity_display.py              # Fallback display
+├── test-persistent-chat.py        # Test suite
 ├── lib/
-│   ├── mouse_listener.py     # Mouse event handling
-│   ├── screenshot.py         # Screenshot capture
-│   ├── context_detector.py   # Application context detection
-│   ├── llm_client.py        # LLM API interface
-│   ├── command_interface.py  # GUI for commands
-│   └── simple_interface.py   # Fallback text interface
-├── cache/                    # Temporary screenshots
-├── history/                  # Interaction history
-└── logs/                     # Application logs
+│   ├── mouse_listener.py          # Mouse event handling
+│   ├── screenshot.py              # Screenshot capture logic
+│   ├── context_detector.py        # Application context detection
+│   ├── llm_client.py             # LLM API integration
+│   ├── chat_window.py            # Persistent chat interface
+│   ├── conversation.py           # Conversation management
+│   ├── ipc_handler.py           # Inter-process communication
+│   ├── command_interface.py       # Legacy GUI formatting
+│   └── simple_interface.py        # Fallback display method
+├── config/
+│   ├── config.json               # Main configuration
+│   └── contexts.json             # Context detection rules
+├── conversations/                # Saved conversation sessions
+├── cache/                        # Temporary screenshots
+├── history/                      # Legacy response history
+└── logs/                        # Application logs
 ```
 
-## 🚧 Roadmap
+## Testing
 
-- **Phase 2**: Advanced context detection and smart prompts
-- **Phase 3**: Enhanced GUI with syntax highlighting
-- **Phase 4**: Voice input and multi-modal support
+Run the test suite to verify installation:
 
-## 🤝 Contributing
+```bash
+python test-persistent-chat.py
+```
 
-This is a personal productivity tool. Feel free to fork and adapt for your needs!
+### Manual Testing
 
-## 📄 License
+```bash
+# Test screenshot capture
+python screenshot-llm.py --test-screenshot
 
-MIT License - Use and modify as needed for your productivity workflow.
+# Test context detection  
+python screenshot-llm.py --test-context
+
+# Test GUI standalone
+python screenshot-llm-gui.py
+
+# Test IPC communication
+python -c "from lib.ipc_handler import *; print('IPC imports OK')"
+```
+
+## Troubleshooting
+
+### GUI Issues
+```bash
+# Check if GUI process is running
+ps aux | grep screenshot-llm-gui
+
+# Restart GUI only
+pkill -f screenshot-llm-gui
+python screenshot-llm-gui.py
+```
+
+### IPC Connection Issues
+```bash
+# Check IPC socket
+ls -la ~/.local/share/screenshot-llm/screenshot-llm.sock
+
+# Clear stale socket
+rm ~/.local/share/screenshot-llm/screenshot-llm.sock
+```
+
+### Permission Issues
+```bash
+# Add user to input group for mouse access
+sudo usermod -a -G input $USER
+# Log out and back in
+```
+
+### Missing Screenshot Tools
+```bash
+# Wayland
+sudo apt install grim wlr-randr
+
+# X11
+sudo apt install maim scrot xdotool
+```
+
+### Conversation Loading Issues
+```bash
+# Check conversation directory
+ls ~/.local/share/screenshot-llm/conversations/
+
+# Verify JSON format
+python -m json.tool ~/.local/share/screenshot-llm/conversations/conversation_*.json
+```
+
+## Dependencies
+
+- **Core**: Python 3.8+, evdev, Pillow, tkinter
+- **LLM Clients**: anthropic, openai
+- **Screenshot Tools**:
+  - Wayland: `grim`, `wlr-randr`
+  - X11: `maim` or `scrot`, `xrandr`, `xdotool`
+- **GUI**: tkinter (built-in), Pillow for image handling
+- **Fallback**: `zenity` or `PyGObject`
+
+## Migration from v1.0
+
+The new persistent chat system is fully backward compatible:
+
+- **Existing configs**: Work unchanged
+- **Service files**: Continue to work with new daemon
+- **Fallback mode**: If GUI unavailable, falls back to original zenity behavior
+- **Manual migration**: Old response history in `history/` can be referenced but won't auto-import
+
+## Performance & Resource Usage
+
+- **Memory**: ~50-100MB for GUI process, ~20-30MB for daemon
+- **CPU**: Minimal when idle, brief spikes during screenshot processing
+- **Storage**: Conversations stored as compact JSON files
+- **Network**: Only during LLM API calls
+
+## Future Enhancements
+
+- Multiple conversation tabs
+- Code syntax highlighting in responses  
+- Quick action buttons (copy commands, run in terminal)
+- Search within conversations
+- Conversation templates for different contexts
+- Export as Markdown with embedded images
+- Voice input/output integration
+
+## License
+
+This project is provided as-is for educational and personal use.
