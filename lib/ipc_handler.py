@@ -193,32 +193,60 @@ class IPCClient:
         self.socket = None
         self.connected = False
     
-    async def connect(self, timeout: float = 5.0) -> bool:
-        """Connect to IPC server"""
-        try:
-            self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-            self.socket.settimeout(timeout)
-            
-            await asyncio.get_event_loop().run_in_executor(
-                None, self.socket.connect, self.socket_path
-            )
-            
-            self.connected = True
-            logger.debug("Connected to IPC server")
-            return True
-            
-        except Exception as e:
-            logger.debug(f"Failed to connect to IPC server: {e}")
-            self.connected = False
-            if self.socket:
-                self.socket.close()
-                self.socket = None
-            return False
+    async def connect(self, timeout: float = 5.0, retries: int = 3) -> bool:
+        """Connect to IPC server with retry logic"""
+        for attempt in range(retries):
+            try:
+                # Clean up any existing socket
+                if self.socket:
+                    try:
+                        self.socket.close()
+                    except:
+                        pass
+                    self.socket = None
+                
+                # Check if socket file exists
+                if not os.path.exists(self.socket_path):
+                    logger.debug(f"Socket file {self.socket_path} does not exist (attempt {attempt + 1})")
+                    if attempt < retries - 1:
+                        await asyncio.sleep(0.5)  # Wait before retry
+                        continue
+                    return False
+                
+                self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                self.socket.settimeout(timeout)
+                
+                await asyncio.get_event_loop().run_in_executor(
+                    None, self.socket.connect, self.socket_path
+                )
+                
+                self.connected = True
+                logger.debug(f"Connected to IPC server on attempt {attempt + 1}")
+                return True
+                
+            except (FileNotFoundError, ConnectionRefusedError, OSError) as e:
+                logger.debug(f"Connection attempt {attempt + 1} failed: {e}")
+                self.connected = False
+                if self.socket:
+                    try:
+                        self.socket.close()
+                    except:
+                        pass
+                    self.socket = None
+                
+                if attempt < retries - 1:
+                    await asyncio.sleep(0.5)  # Wait before retry
+                else:
+                    logger.debug(f"All {retries} connection attempts failed")
+                    
+        return False
     
     async def send_message(self, message: IPCMessage) -> bool:
-        """Send message to server"""
+        """Send message to server with robust error handling"""
+        # Try to connect if not connected
         if not self.connected:
             if not await self.connect():
+                logger.debug("Could not establish IPC connection")
                 return False
         
         try:
@@ -235,8 +263,32 @@ class IPCClient:
             logger.debug(f"Sent IPC message: {message.command}")
             return True
             
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            logger.debug(f"IPC connection lost: {e}")
+            self.disconnect()
+            
+            # Try to reconnect and send once more
+            if await self.connect():
+                try:
+                    message_str = message.to_json()
+                    message_bytes = message_str.encode('utf-8')
+                    length_bytes = len(message_bytes).to_bytes(4, byteorder='big')
+                    
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, self.socket.send, length_bytes + message_bytes
+                    )
+                    
+                    logger.debug(f"Sent IPC message after reconnect: {message.command}")
+                    return True
+                except Exception as retry_error:
+                    logger.debug(f"Retry send failed: {retry_error}")
+                    self.disconnect()
+                    return False
+            else:
+                return False
+                
         except Exception as e:
-            logger.error(f"Failed to send IPC message: {e}")
+            logger.debug(f"Unexpected error sending IPC message: {e}")
             self.disconnect()
             return False
     

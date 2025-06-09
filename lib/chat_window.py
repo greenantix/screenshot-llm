@@ -142,14 +142,44 @@ class PersistentChatWindow:
                        borderwidth=1,
                        relief='solid',
                        bordercolor=self.accent_color)
+        
+        # Label styling
+        style.configure('Header.TLabel',
+                       background=self.bg_color,
+                       foreground=self.fg_color,
+                       font=('SF Pro Display', 11))
+        
+        style.configure('Status.TLabel',
+                       background=self.bg_color,
+                       foreground=self.fg_secondary,
+                       font=('SF Pro Display', 9))
+        
+        # Scrollbar styling
+        style.configure('Modern.Vertical.TScrollbar',
+                       background=self.surface_color,
+                       troughcolor=self.bg_color,
+                       borderwidth=0,
+                       arrowcolor=self.fg_secondary,
+                       darkcolor=self.surface_color,
+                       lightcolor=self.surface_color)
     
     def _create_menu(self):
         """Create menu bar"""
-        menubar = tk.Menu(self.root)
+        menubar = tk.Menu(self.root,
+                         bg=self.surface_color,
+                         fg=self.fg_color,
+                         activebackground=self.accent_color,
+                         activeforeground='white',
+                         borderwidth=0)
         self.root.config(menu=menubar)
         
         # File menu
-        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu = tk.Menu(menubar, tearoff=0,
+                           bg=self.surface_color,
+                           fg=self.fg_color,
+                           activebackground=self.accent_color,
+                           activeforeground='white',
+                           borderwidth=0)
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="New Conversation", command=self._new_conversation)
         file_menu.add_command(label="Load Conversation", command=self._load_conversation)
@@ -160,13 +190,23 @@ class PersistentChatWindow:
         file_menu.add_command(label="Exit", command=self._quit_application)
         
         # Edit menu
-        edit_menu = tk.Menu(menubar, tearoff=0)
+        edit_menu = tk.Menu(menubar, tearoff=0,
+                           bg=self.surface_color,
+                           fg=self.fg_color,
+                           activebackground=self.accent_color,
+                           activeforeground='white',
+                           borderwidth=0)
         menubar.add_cascade(label="Edit", menu=edit_menu)
         edit_menu.add_command(label="Copy All", command=self._copy_all_text)
         edit_menu.add_command(label="Clear Conversation", command=self._clear_conversation)
         
         # View menu
-        view_menu = tk.Menu(menubar, tearoff=0)
+        view_menu = tk.Menu(menubar, tearoff=0,
+                           bg=self.surface_color,
+                           fg=self.fg_color,
+                           activebackground=self.accent_color,
+                           activeforeground='white',
+                           borderwidth=0)
         menubar.add_cascade(label="View", menu=view_menu)
         view_menu.add_command(label="Minimize to Tray", command=self._minimize_to_tray)
         view_menu.add_command(label="Always on Top", command=self._toggle_always_on_top)
@@ -284,7 +324,7 @@ class PersistentChatWindow:
         self.status_label = ttk.Label(
             status_frame,
             text="Ready - Waiting for screenshots or user input",
-            font=('Consolas', 9)
+            style='Status.TLabel'
         )
         self.status_label.pack(side=tk.LEFT)
         
@@ -292,7 +332,7 @@ class PersistentChatWindow:
         self.conv_info_label = ttk.Label(
             status_frame,
             text="",
-            font=('Consolas', 9)
+            style='Status.TLabel'
         )
         self.conv_info_label.pack(side=tk.RIGHT)
         
@@ -466,16 +506,13 @@ class PersistentChatWindow:
         self.root.after(0, self._minimize_to_tray)
     
     async def _process_screenshot_with_llm(self, image_path: str, context: Dict[str, Any]):
-        """Process screenshot with LLM and display response"""
+        """Process screenshot with LLM using full conversation context"""
         try:
             # Update status
             self.root.after(0, lambda: self.status_label.config(text="Processing screenshot with LLM..."))
             
-            # Build context prompt from context data
-            context_prompt = self._format_context_for_llm(context)
-            
-            # Send to LLM using the existing client
-            response_text = await self.llm_client.send_screenshot(image_path, context_prompt)
+            # Get full conversation context for LLM
+            response_text = await self._get_llm_response_with_full_context(image_path, context)
             
             if response_text:
                 # Add response to conversation
@@ -510,6 +547,186 @@ class PersistentChatWindow:
         
         context_text = ". ".join(parts) if parts else "I need help"
         return f"{context_text}. Help me with:"
+    
+    async def _get_llm_response_with_full_context(self, image_path: str, context: Dict[str, Any]) -> str:
+        """Get LLM response using full conversation context"""
+        try:
+            # Get all conversation messages formatted for API
+            api_messages = self.conversation_manager.get_messages_for_api()
+            
+            # Build context prompt for the new screenshot
+            context_prompt = self._format_context_for_llm(context)
+            
+            if not api_messages:
+                # First message - just send the screenshot
+                return await self.llm_client.send_screenshot(image_path, context_prompt)
+            
+            # We have conversation history - need to format it properly for the LLM API
+            if self.llm_client.config['provider'] == 'anthropic':
+                return await self._send_to_anthropic_with_context(api_messages, image_path, context_prompt)
+            elif self.llm_client.config['provider'] == 'openai':
+                return await self._send_to_openai_with_context(api_messages, image_path, context_prompt)
+            else:
+                # Fallback to simple screenshot processing
+                return await self.llm_client.send_screenshot(image_path, context_prompt)
+                
+        except Exception as e:
+            logger.error(f"Error getting LLM response with context: {e}")
+            # Fallback to simple processing
+            context_prompt = self._format_context_for_llm(context)
+            return await self.llm_client.send_screenshot(image_path, context_prompt)
+    
+    async def _send_to_anthropic_with_context(self, api_messages: list, image_path: str, context_prompt: str) -> str:
+        """Send conversation with new screenshot to Anthropic Claude"""
+        try:
+            # Convert conversation messages to Anthropic format
+            claude_messages = []
+            
+            for msg in api_messages:
+                if msg.get('role') == 'user':
+                    content = msg.get('content', '')
+                    if isinstance(content, list):
+                        # Handle mixed content (text + images)
+                        claude_content = []
+                        for item in content:
+                            if item.get('type') == 'text':
+                                claude_content.append({
+                                    "type": "text",
+                                    "text": item.get('text', '')
+                                })
+                            elif item.get('type') == 'image_path':
+                                # Skip old images - we'll only include the new one
+                                pass
+                        
+                        if claude_content:
+                            claude_messages.append({
+                                "role": "user",
+                                "content": claude_content
+                            })
+                    else:
+                        # Simple text message
+                        claude_messages.append({
+                            "role": "user", 
+                            "content": content
+                        })
+                        
+                elif msg.get('role') == 'assistant':
+                    claude_messages.append({
+                        "role": "assistant",
+                        "content": msg.get('content', '')
+                    })
+            
+            # Add the new screenshot message
+            image_data = self.llm_client._encode_image(image_path)
+            mime_type = self.llm_client._get_image_mime_type(image_path)
+            
+            new_message = {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"{context_prompt}\n\nThis is a new screenshot. Please analyze it in the context of our conversation."
+                    },
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime_type,
+                            "data": image_data
+                        }
+                    }
+                ]
+            }
+            
+            claude_messages.append(new_message)
+            
+            # Send to Claude
+            response = await self.llm_client.client.messages.create(
+                model=self.llm_client.config['model'],
+                max_tokens=self.llm_client.config['max_tokens'],
+                messages=claude_messages
+            )
+            
+            return response.content[0].text
+            
+        except Exception as e:
+            logger.error(f"Error sending to Anthropic with context: {e}")
+            raise
+    
+    async def _send_to_openai_with_context(self, api_messages: list, image_path: str, context_prompt: str) -> str:
+        """Send conversation with new screenshot to OpenAI"""
+        try:
+            # Convert conversation messages to OpenAI format
+            openai_messages = []
+            
+            for msg in api_messages:
+                if msg.get('role') == 'user':
+                    content = msg.get('content', '')
+                    if isinstance(content, list):
+                        # Handle mixed content (text + images)
+                        openai_content = []
+                        for item in content:
+                            if item.get('type') == 'text':
+                                openai_content.append({
+                                    "type": "text",
+                                    "text": item.get('text', '')
+                                })
+                            elif item.get('type') == 'image_path':
+                                # Skip old images - we'll only include the new one
+                                pass
+                        
+                        if openai_content:
+                            openai_messages.append({
+                                "role": "user",
+                                "content": openai_content
+                            })
+                    else:
+                        # Simple text message
+                        openai_messages.append({
+                            "role": "user",
+                            "content": content
+                        })
+                        
+                elif msg.get('role') == 'assistant':
+                    openai_messages.append({
+                        "role": "assistant",
+                        "content": msg.get('content', '')
+                    })
+            
+            # Add the new screenshot message
+            image_data = self.llm_client._encode_image(image_path)
+            mime_type = self.llm_client._get_image_mime_type(image_path)
+            
+            new_message = {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"{context_prompt}\n\nThis is a new screenshot. Please analyze it in the context of our conversation."
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{image_data}"
+                        }
+                    }
+                ]
+            }
+            
+            openai_messages.append(new_message)
+            
+            # Send to OpenAI
+            response = await self.llm_client.client.chat.completions.create(
+                model=self.llm_client.config['model'],
+                max_tokens=self.llm_client.config['max_tokens'],
+                messages=openai_messages
+            )
+            
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            logger.error(f"Error sending to OpenAI with context: {e}")
+            raise
     
     def _parse_markdown(self, text: str) -> list:
         """Parse markdown text into formatted segments"""
@@ -724,29 +941,67 @@ class PersistentChatWindow:
     def _make_image_clickable(self, image_path: str):
         """Make the last inserted image clickable to view full size"""
         try:
-            # Get the current position in text widget
-            current_pos = self.chat_display.index(tk.INSERT)
+            # Get current text widget state and indices
+            current_index = self.chat_display.index("end-2c")  # Get position before the last newline
             
-            # Create a tag for this image
-            tag_name = f"image_{len(self._image_refs)}"
+            # Create a unique tag for this image
+            tag_name = f"clickable_image_{len(self._image_refs) if hasattr(self, '_image_refs') else 0}"
             
-            # Apply tag to the image (approximate position)
-            # Note: This is a simplified approach - more complex tagging would be needed for precise click handling
-            def on_image_click(event):
-                self._show_full_image(image_path)
-            
-            # For now, we'll add a text link instead of making the actual image clickable
-            # This is because making embedded images clickable in Tkinter Text widget is complex
-            self.chat_display.insert(tk.END, " [View Full Size]", 'image_link')
-            
-            # Configure the link style
-            self.chat_display.tag_configure('image_link', 
-                                          foreground='#0078d4', 
-                                          underline=True)
-            
-            # Bind click event to the link
-            self.chat_display.tag_bind('image_link', '<Button-1>', 
-                                     lambda e: self._show_full_image(image_path))
+            # Apply tag to the image that was just inserted
+            # We need to find the image position - it should be just before current position
+            try:
+                # Search backwards for the image
+                search_start = self.chat_display.index("end-10c")
+                img_start = self.chat_display.search("image", search_start, current_index)
+                
+                if img_start:
+                    # Create a tag around the image area
+                    img_end = f"{img_start}+1c"
+                    self.chat_display.tag_add(tag_name, img_start, img_end)
+                    
+                    # Configure the tag for visual feedback
+                    self.chat_display.tag_configure(tag_name, 
+                                                  borderwidth=1,
+                                                  relief='solid',
+                                                  background=self.accent_color)
+                    
+                    # Bind click event to the tag
+                    self.chat_display.tag_bind(tag_name, '<Button-1>', 
+                                             lambda e: self._show_full_image(image_path))
+                    
+                    # Change cursor on hover
+                    self.chat_display.tag_bind(tag_name, '<Enter>', 
+                                             lambda e: self.chat_display.config(cursor='hand2'))
+                    self.chat_display.tag_bind(tag_name, '<Leave>', 
+                                             lambda e: self.chat_display.config(cursor=''))
+                    
+                    # Add a small text hint
+                    self.chat_display.insert(tk.END, " 🔍", 'image_hint')
+                    self.chat_display.tag_configure('image_hint', 
+                                                  foreground=self.accent_color,
+                                                  font=('SF Pro Display', 8))
+                    self.chat_display.tag_bind('image_hint', '<Button-1>', 
+                                             lambda e: self._show_full_image(image_path))
+                    
+                else:
+                    # Fallback: add a text link
+                    self.chat_display.insert(tk.END, " [Click to view full size]", 'image_link')
+                    self.chat_display.tag_configure('image_link', 
+                                                  foreground=self.accent_color, 
+                                                  underline=True,
+                                                  font=('SF Pro Display', 10))
+                    self.chat_display.tag_bind('image_link', '<Button-1>', 
+                                             lambda e: self._show_full_image(image_path))
+                    
+            except Exception as search_error:
+                logger.debug(f"Could not find image for tagging: {search_error}")
+                # Simple fallback
+                self.chat_display.insert(tk.END, " [View Full Size]", 'image_link')
+                self.chat_display.tag_configure('image_link', 
+                                              foreground=self.accent_color, 
+                                              underline=True)
+                self.chat_display.tag_bind('image_link', '<Button-1>', 
+                                         lambda e: self._show_full_image(image_path))
             
         except Exception as e:
             logger.warning(f"Could not make image clickable: {e}")
@@ -923,19 +1178,20 @@ class PersistentChatWindow:
         ).start()
     
     async def _get_user_message_response(self):
-        """Get LLM response to user message"""
+        """Get LLM response to user message using conversation context"""
         try:
             # Update status
             self.root.after(0, lambda: self.status_label.config(text="Getting response..."))
             
-            # For now, just echo back (TODO: implement proper conversation)
-            response_text = "I received your message. Full conversation context will be implemented in the next phase."
+            # Get LLM response using full conversation context
+            response_text = await self._get_llm_response_for_text_only()
             
-            # Add response to conversation
-            message = self.conversation_manager.add_assistant_message(response_text)
-            
-            # Display in GUI
-            self.root.after(0, lambda: self._display_assistant_message(message))
+            if response_text:
+                # Add response to conversation
+                message = self.conversation_manager.add_assistant_message(response_text)
+                
+                # Display in GUI
+                self.root.after(0, lambda: self._display_assistant_message(message))
             
             # Update status
             self.root.after(0, lambda: self.status_label.config(text="Ready"))
@@ -944,6 +1200,115 @@ class PersistentChatWindow:
             logger.error(f"Error getting user message response: {e}")
             error_msg = f"Error getting response: {str(e)}"
             self.root.after(0, lambda: self._display_error(error_msg))
+    
+    async def _get_llm_response_for_text_only(self) -> str:
+        """Get LLM response for text-only conversation (no new images)"""
+        try:
+            # Get all conversation messages
+            api_messages = self.conversation_manager.get_messages_for_api()
+            
+            if not api_messages:
+                return "I don't see any conversation history. Please share a screenshot or ask a specific question."
+            
+            # Convert messages to the appropriate format for the LLM provider
+            if self.llm_client.config['provider'] == 'anthropic':
+                return await self._send_text_to_anthropic(api_messages)
+            elif self.llm_client.config['provider'] == 'openai':
+                return await self._send_text_to_openai(api_messages)
+            else:
+                return "I can only respond when a specific LLM provider is configured."
+                
+        except Exception as e:
+            logger.error(f"Error getting text-only LLM response: {e}")
+            return f"Sorry, I encountered an error: {str(e)}"
+    
+    async def _send_text_to_anthropic(self, api_messages: list) -> str:
+        """Send text conversation to Anthropic Claude"""
+        try:
+            claude_messages = []
+            
+            for msg in api_messages:
+                if msg.get('role') == 'user':
+                    content = msg.get('content', '')
+                    if isinstance(content, list):
+                        # Extract only text content, skip images
+                        text_parts = []
+                        for item in content:
+                            if item.get('type') == 'text':
+                                text_parts.append(item.get('text', ''))
+                        
+                        if text_parts:
+                            claude_messages.append({
+                                "role": "user",
+                                "content": " ".join(text_parts)
+                            })
+                    else:
+                        claude_messages.append({
+                            "role": "user",
+                            "content": content
+                        })
+                        
+                elif msg.get('role') == 'assistant':
+                    claude_messages.append({
+                        "role": "assistant",
+                        "content": msg.get('content', '')
+                    })
+            
+            response = await self.llm_client.client.messages.create(
+                model=self.llm_client.config['model'],
+                max_tokens=self.llm_client.config['max_tokens'],
+                messages=claude_messages
+            )
+            
+            return response.content[0].text
+            
+        except Exception as e:
+            logger.error(f"Error sending text to Anthropic: {e}")
+            raise
+    
+    async def _send_text_to_openai(self, api_messages: list) -> str:
+        """Send text conversation to OpenAI"""
+        try:
+            openai_messages = []
+            
+            for msg in api_messages:
+                if msg.get('role') == 'user':
+                    content = msg.get('content', '')
+                    if isinstance(content, list):
+                        # Extract only text content, skip images
+                        text_parts = []
+                        for item in content:
+                            if item.get('type') == 'text':
+                                text_parts.append(item.get('text', ''))
+                        
+                        if text_parts:
+                            openai_messages.append({
+                                "role": "user",
+                                "content": " ".join(text_parts)
+                            })
+                    else:
+                        openai_messages.append({
+                            "role": "user",
+                            "content": content
+                        })
+                        
+                elif msg.get('role') == 'assistant':
+                    openai_messages.append({
+                        "role": "assistant",
+                        "content": msg.get('content', '')
+                    })
+            
+            response = await self.llm_client.client.chat.completions.create(
+                model=self.llm_client.config['model'],
+                max_tokens=self.llm_client.config['max_tokens'],
+                messages=openai_messages
+            )
+            
+            return response.choices[0].message.content
+            
+        except Exception as e:
+            logger.error(f"Error sending text to OpenAI: {e}")
+            raise
     
     def _new_conversation(self):
         """Start new conversation"""

@@ -1,0 +1,42 @@
+{
+  "id": "conversation_2025-06-09_12-39-37",
+  "created": "2025-06-09T12:39:37.102460",
+  "messages": [
+    {
+      "timestamp": "2025-06-09T12:39:37.095951",
+      "type": "screenshot",
+      "content": "Screenshot: test1.png",
+      "image_path": "/tmp/test1.png",
+      "context": {
+        "app": "test"
+      }
+    },
+    {
+      "timestamp": "2025-06-09T12:39:37.096043",
+      "type": "user",
+      "content": "What do you see?",
+      "context": {
+        "app": "test"
+      }
+    },
+    {
+      "timestamp": "2025-06-09T12:39:37.096114",
+      "type": "assistant",
+      "content": "I see a test application.",
+      "context": {
+        "app": "test"
+      }
+    },
+    {
+      "timestamp": "2025-06-09T12:39:37.102458",
+      "type": "user",
+      "content": "Can you help me with this error?",
+      "context": {
+        "app": "test"
+      }
+    }
+  ],
+  "context": {
+    "app": "test"
+  }
+}
