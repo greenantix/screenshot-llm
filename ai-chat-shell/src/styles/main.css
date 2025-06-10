@@ -1,0 +1,206 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+    .sidebar-item {
+        @apply flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 cursor-pointer;
+        @apply hover:bg-gray-200 dark:hover:bg-gray-700;
+    }
+    
+    .sidebar-item.active {
+        @apply bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300;
+    }
+    
+    /* Service Item Styling */
+    .service-item {
+        @apply relative transition-all duration-200;
+    }
+    
+    .service-item.active .w-12 {
+        @apply ring-2 ring-ai-blue ring-offset-2 ring-offset-white dark:ring-offset-gray-800;
+        @apply shadow-lg transform scale-105;
+    }
+    
+    .service-item.active[data-service="claude"] .w-12 {
+        @apply ring-orange-500 bg-orange-100 dark:bg-orange-900;
+    }
+    
+    .service-item.active[data-service="chatgpt"] .w-12 {
+        @apply ring-green-500 bg-green-100 dark:bg-green-900;
+    }
+    
+    .service-item.active[data-service="gemini"] .w-12 {
+        @apply ring-blue-500 bg-blue-100 dark:bg-blue-900;
+    }
+    
+    .service-item.active[data-service="perplexity"] .w-12 {
+        @apply ring-purple-500 bg-purple-100 dark:bg-purple-900;
+    }
+    
+    .service-item.active[data-service="claude"] svg {
+        @apply text-orange-600 dark:text-orange-400;
+    }
+    
+    .service-item.active[data-service="chatgpt"] svg {
+        @apply text-green-600 dark:text-green-400;
+    }
+    
+    .service-item.active[data-service="gemini"] svg {
+        @apply text-blue-600 dark:text-blue-400;
+    }
+    
+    .service-item.active[data-service="perplexity"] svg {
+        @apply text-purple-600 dark:text-purple-400;
+    }
+    
+    /* Webview Container */
+    .webview-container {
+        @apply relative overflow-hidden;
+    }
+    
+    .webview-container iframe {
+        @apply transition-opacity duration-300;
+    }
+    
+    /* Loading Animation */
+    .loading-dots {
+        @apply inline-flex space-x-1;
+    }
+    
+    .loading-dots span {
+        @apply w-2 h-2 bg-ai-blue rounded-full animate-pulse;
+        animation-delay: calc(var(--delay) * 0.1s);
+    }
+    
+    /* Custom scrollbar for webview areas */
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+    }
+    
+    .custom-scrollbar::-webkit-scrollbar-track {
+        @apply bg-gray-100 dark:bg-gray-800;
+    }
+    
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        @apply bg-gray-400 dark:bg-gray-600 rounded-full;
+    }
+    
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        @apply bg-gray-500 dark:bg-gray-500;
+    }
+    
+    /* Smooth transitions for layout changes */
+    .layout-transition {
+        @apply transition-all duration-300 ease-in-out;
+    }
+    
+    /* Focus states for accessibility */
+    .service-item:focus-within .w-12 {
+        @apply ring-2 ring-ai-blue ring-offset-2 ring-offset-white dark:ring-offset-gray-800;
+    }
+    
+    /* Sidebar responsive behavior */
+    .sidebar {
+        @apply transition-all duration-300 ease-in-out;
+    }
+    
+    /* Error state styling */
+    .error-state {
+        @apply bg-gradient-to-br from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-800/20;
+        @apply border border-red-200 dark:border-red-800;
+    }
+    
+    /* Success state styling */
+    .success-state {
+        @apply bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20;
+        @apply border border-green-200 dark:border-green-800;
+    }
+    
+    /* Status indicator animations */
+    .status-indicator {
+        @apply transform transition-all duration-300 ease-in-out;
+    }
+    
+    .status-indicator.entering {
+        @apply translate-x-full opacity-0;
+    }
+    
+    .status-indicator.entered {
+        @apply translate-x-0 opacity-100;
+    }
+    
+    .status-indicator.exiting {
+        @apply translate-x-full opacity-0;
+    }
+    
+    /* Enhanced hover effects */
+    .service-item:hover .w-12 {
+        @apply transform scale-105 shadow-md;
+    }
+    
+    /* Keyboard shortcut feedback */
+    .keyboard-feedback {
+        @apply fixed top-4 right-4 z-50;
+        @apply bg-indigo-600 text-white px-4 py-2 rounded-lg shadow-lg;
+        @apply transform translate-x-full transition-transform duration-300;
+    }
+    
+    .keyboard-feedback.show {
+        @apply translate-x-0;
+    }
+    
+    /* Loading spinner improvements */
+    .loading-spinner {
+        @apply animate-spin;
+        animation-duration: 1s;
+    }
+    
+    /* Window controls styling */
+    .window-controls button:hover {
+        @apply transform scale-110 shadow-sm;
+    }
+    
+    .window-controls button:active {
+        @apply transform scale-95;
+    }
+    
+    /* Connection pulse animation */
+    @keyframes connection-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    
+    .connection-pulse {
+        animation: connection-pulse 2s ease-in-out infinite;
+    }
+}
+
+/* Custom keyframes for loading animation */
+@keyframes loading-pulse {
+    0%, 100% {
+        opacity: 0.4;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+.loading-pulse {
+    animation: loading-pulse 1.5s ease-in-out infinite;
+}
+
+/* Responsive design adjustments */
+@media (max-width: 768px) {
+    .sidebar {
+        @apply w-14;
+    }
+    
+    .service-item .w-12 {
+        @apply w-10 h-10;
+    }
+    
+    .service-item svg {
+        @apply w-5 h-5;
+    }
+}

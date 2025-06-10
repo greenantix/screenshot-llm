@@ -1,0 +1,25 @@
+{
+  "name": "ai-chat-shell",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "npm run build:css && tauri build",
+    "build:css": "tailwindcss -i ./src/styles/main.css -o ./src/styles/output.css --minify",
+    "build:release": "npm run build:css && tauri build",
+    "build:debug": "npm run build:css && tauri build -- --debug",
+    "watch:css": "tailwindcss -i ./src/styles/main.css -o ./src/styles/output.css --watch",
+    "verify:build": "npm run build:css && node -e \"console.log('CSS build verified')\"",
+    "clean": "rm -rf src-tauri/target dist",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^1.5.3"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.5.11",
+    "tailwindcss": "^3.4.1",
+    "autoprefixer": "^10.4.17"
+  }
+}

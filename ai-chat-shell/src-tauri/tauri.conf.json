@@ -1,0 +1,36 @@
+{
+  "build": {
+    "distDir": "../src",
+    "devPath": "../src"
+  },
+  "package": {
+    "productName": "AI Chat Shell",
+    "version": "1.0.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "fs": {
+        "all": false,
+        "readFile": true,
+        "writeFile": true,
+        "createDir": true,
+        "scope": ["$APPCONFIG/**"]
+      }
+    },
+    "windows": [
+      {
+        "title": "AI Chat Shell",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com"
+    }
+  }
+}
