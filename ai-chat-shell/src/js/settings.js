@@ -1,5 +1,59 @@
-import { invoke } from '@tauri-apps/api/tauri';
-import { writeTextFile, readTextFile, BaseDirectory } from '@tauri-apps/api/fs';
+// Use dynamic imports to avoid module resolution issues
+let tauriAPI = {};
+
+async function loadTauriAPI() {
+    try {
+        // Check if we're in a Tauri environment
+        if (window.__TAURI_IPC__) {
+            // Wait for Tauri to be fully loaded
+            await new Promise(resolve => {
+                if (window.__TAURI__) {
+                    resolve();
+                } else {
+                    const checkTauri = () => {
+                        if (window.__TAURI__) {
+                            resolve();
+                        } else {
+                            setTimeout(checkTauri, 100);
+                        }
+                    };
+                    checkTauri();
+                }
+            });
+            
+            tauriAPI.invoke = window.__TAURI__.tauri.invoke;
+            tauriAPI.writeTextFile = window.__TAURI__.fs.writeTextFile;
+            tauriAPI.readTextFile = window.__TAURI__.fs.readTextFile;
+            tauriAPI.BaseDirectory = window.__TAURI__.fs.BaseDirectory;
+        } else {
+            throw new Error('Not in Tauri environment');
+        }
+    } catch (error) {
+        console.warn('Failed to load Tauri API:', error);
+        // Provide mock functions for development/browser
+        tauriAPI = {
+            invoke: () => Promise.resolve(),
+            writeTextFile: (filename, data) => {
+                console.log('Mock writeTextFile:', filename, data);
+                return Promise.resolve();
+            },
+            readTextFile: (filename) => {
+                console.log('Mock readTextFile:', filename);
+                // Return default settings for mock
+                if (filename === 'settings.json') {
+                    return Promise.resolve(JSON.stringify({
+                        theme: 'light',
+                        defaultService: 'claude',
+                        apiKeys: {},
+                        customInstructions: {}
+                    }));
+                }
+                return Promise.reject(new Error('Mock API - file not found'));
+            },
+            BaseDirectory: { AppConfig: 'AppConfig' }
+        };
+    }
+}
 
 class SettingsManager {
     constructor() {
@@ -15,8 +69,8 @@ class SettingsManager {
     
     async load() {
         try {
-            const content = await readTextFile(this.settingsFile, { 
-                dir: BaseDirectory.AppConfig 
+            const content = await tauriAPI.readTextFile(this.settingsFile, { 
+                dir: tauriAPI.BaseDirectory.AppConfig 
             });
             this.settings = JSON.parse(content);
         } catch (error) {
@@ -27,8 +81,8 @@ class SettingsManager {
     }
     
     async save() {
-        await writeTextFile(this.settingsFile, JSON.stringify(this.settings, null, 2), {
-            dir: BaseDirectory.AppConfig
+        await tauriAPI.writeTextFile(this.settingsFile, JSON.stringify(this.settings, null, 2), {
+            dir: tauriAPI.BaseDirectory.AppConfig
         });
     }
     
@@ -101,6 +155,7 @@ class SettingsManager {
     }
     
     async initialize() {
+        await loadTauriAPI();
         const settings = await this.load();
         
         // Apply theme

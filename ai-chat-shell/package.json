@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
+    "dev": "npm run watch:css & tauri dev",
     "build": "npm run build:css && tauri build",
     "build:css": "tailwindcss -i ./src/styles/main.css -o ./src/styles/output.css --minify",
     "build:release": "npm run build:css && tauri build",

@@ -168,14 +168,20 @@ class WebviewManager {
         const errorState = document.getElementById('errorState');
         
         // Hide error state
-        errorState.classList.add('hidden');
+        if (errorState) {
+            errorState.classList.add('hidden');
+        }
         
         // Update retry indicator if this is a retry
         if (isRetry) {
             const retryIndicator = document.getElementById('retryIndicator');
             const retryCountEl = document.getElementById('retryCount');
-            retryIndicator.classList.remove('hidden');
-            retryCountEl.textContent = this.retryCount;
+            if (retryIndicator) {
+                retryIndicator.classList.remove('hidden');
+            }
+            if (retryCountEl) {
+                retryCountEl.textContent = this.retryCount;
+            }
         }
         
         // Set up load event handlers
@@ -189,8 +195,10 @@ class WebviewManager {
                 this.hideStatusIndicator();
             }, 1000); // Show success for 1 second
             
-            iframe.removeEventListener('load', onLoad);
-            iframe.removeEventListener('error', onError);
+            if (iframe) {
+                iframe.removeEventListener('load', onLoad);
+                iframe.removeEventListener('error', onError);
+            }
             
             if (this.onStatusChange) {
                 this.onStatusChange([{ serviceKey, isHealthy: true }]);
@@ -216,22 +224,28 @@ class WebviewManager {
                 }
             }
             
-            iframe.removeEventListener('load', onLoad);
-            iframe.removeEventListener('error', onError);
+            if (iframe) {
+                iframe.removeEventListener('load', onLoad);
+                iframe.removeEventListener('error', onError);
+            }
         };
         
-        iframe.addEventListener('load', onLoad);
-        iframe.addEventListener('error', onError);
+        if (iframe) {
+            iframe.addEventListener('load', onLoad);
+            iframe.addEventListener('error', onError);
+        }
         
         // Set timeout for loading
         setTimeout(() => {
-            if (!loadingOverlay.classList.contains('hidden')) {
+            if (loadingOverlay && !loadingOverlay.classList.contains('hidden')) {
                 onError();
             }
         }, 15000); // 15 second timeout
         
         // Load the service
-        iframe.src = service.url;
+        if (iframe) {
+            iframe.src = service.url;
+        }
         
         // Notify service change (only on first load, not retries)
         if (!isRetry && this.onServiceChange) {
@@ -250,25 +264,36 @@ class WebviewManager {
             loadingServiceName.textContent = serviceName;
         }
         
-        // Hide retry indicator for new loads
-        retryIndicator.classList.add('hidden');
-        loadingOverlay.classList.remove('hidden');
+        // Hide retry indicator for new loads (check if element exists first)
+        if (retryIndicator) {
+            retryIndicator.classList.add('hidden');
+        }
+        
+        if (loadingOverlay) {
+            loadingOverlay.classList.remove('hidden');
+        }
     }
     
     hideLoading() {
         const loadingOverlay = document.getElementById('loadingOverlay');
-        loadingOverlay.classList.add('hidden');
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('hidden');
+        }
     }
     
     showError() {
         const errorState = document.getElementById('errorState');
-        errorState.classList.remove('hidden');
+        if (errorState) {
+            errorState.classList.remove('hidden');
+        }
     }
     
     updateStatusIndicator(status, message) {
         const indicator = document.getElementById('statusIndicator');
         const dot = document.getElementById('statusDot');
         const text = document.getElementById('statusText');
+        
+        if (!indicator || !dot || !text) return;
         
         indicator.classList.remove('hidden');
         text.textContent = message;
@@ -292,9 +317,11 @@ class WebviewManager {
     
     hideStatusIndicator() {
         const indicator = document.getElementById('statusIndicator');
-        setTimeout(() => {
-            indicator.classList.add('hidden');
-        }, 3000); // Hide after 3 seconds
+        if (indicator) {
+            setTimeout(() => {
+                indicator.classList.add('hidden');
+            }, 3000); // Hide after 3 seconds
+        }
     }
     
     getCurrentService() {

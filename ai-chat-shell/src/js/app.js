@@ -13,21 +13,30 @@ class App {
     async initialize() {
         console.log('App initialized - Phase 3 webview core active');
         
-        // Load saved settings first
-        await this.settingsManager.initialize();
-        
-        // Get default service from settings
-        const settings = this.settingsManager.getSettings();
-        this.activeService = settings.defaultService || 'claude';
-        
-        // Build initial UI with sidebar and webview
-        this.renderLayout();
-        
-        // Initialize webview manager
-        this.initializeWebview();
-        
-        // Setup keyboard shortcuts
-        this.setupKeyboardShortcuts();
+        try {
+            // Load saved settings first
+            console.log('Loading settings...');
+            await this.settingsManager.initialize();
+            
+            // Get default service from settings
+            const settings = this.settingsManager.getSettings();
+            this.activeService = settings.defaultService || 'claude';
+            console.log('Active service:', this.activeService);
+            
+            // Build initial UI with sidebar and webview
+            console.log('Rendering layout...');
+            this.renderLayout();
+            
+            // Initialize webview manager
+            console.log('Initializing webview...');
+            this.initializeWebview();
+            
+            // Setup keyboard shortcuts
+            this.setupKeyboardShortcuts();
+            console.log('App initialization complete');
+        } catch (error) {
+            console.error('App initialization failed:', error);
+        }
     }
     
     renderLayout() {
@@ -122,11 +131,16 @@ class App {
     bindSidebarEvents() {
         // Service selection
         const serviceItems = document.querySelectorAll('.service-item');
+        console.log('Found service items:', serviceItems.length);
         serviceItems.forEach(item => {
             item.addEventListener('click', () => {
                 const service = item.dataset.service;
+                console.log('Service clicked:', service, 'WebviewManager exists:', !!this.webviewManager);
                 if (service && this.webviewManager) {
+                    console.log('Switching to service:', service);
                     this.webviewManager.switchService(service);
+                } else {
+                    console.warn('Cannot switch service - missing service or webviewManager', { service, webviewManager: this.webviewManager });
                 }
             });
         });
